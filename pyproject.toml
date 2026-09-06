@@ -1,0 +1,80 @@
+[project]
+name = "resync-mcp"  # "resync" is already taken on PyPI (an unrelated ResourceSync library) — verify this name is free before first release
+version = "0.1.0"
+description = "An AI-native compatibility engine for dependencies, APIs, and the agents that write your code."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"  # tomllib is stdlib from 3.11; most of the stack has dropped 3.9/3.10
+authors = [
+    { name = "Resync Contributors" }
+]
+keywords = ["dependency-management", "mcp", "code-migration", "rag", "ast", "codemod"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+dependencies = [
+    "pydantic>=2.0,<3",   # keep a single pydantic major version across the whole tree — mcp depends on it too
+    "tomli-w>=1.0",       # tomllib (stdlib) is read-only; this is the standard companion for writing resync.toml
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+# Genuine, user-facing installable extras only — these ship in the published distribution's
+# metadata, per PEP 621. Someone installing `resync-mcp[server]` should recognize every name here.
+server = [
+    "mcp>=1.0",           # confirm this targets the 2026-07-28 stateless MCP core before pinning further
+    "uvicorn>=0.30",
+    "starlette>=0.38",
+    "lancedb>=0.27",
+    "kuzu",               # point this at the actively-maintained fork; verify the exact source in that project's own install docs
+    "fastembed>=0.4",     # ONNX-based; deliberately avoids pulling in torch/sentence-transformers for the embedding step
+    "httpx>=0.27",        # OSV.dev / GitHub Advisory / registry lookups
+    "sigstore>=3.0",      # supply-chain provenance verification
+    "jinja2>=3.1",        # review dashboard templates, served on the same Starlette app — see docs/ui-design.md#surface-3
+]
+cli = [
+    "typer>=0.12",
+    "rich>=13.0",         # CLI table/color output — see docs/ui-design.md#surface-1-cli-output
+]
+
+[dependency-groups]
+# PEP 735 — non-production, contributor-only tooling. Deliberately kept out of
+# [project.optional-dependencies]: these should never appear in the published package's
+# user-facing extras list, only in a local `uv sync`. Supported by uv, pip 25.1+, and Poetry 2.3+.
+verify = [
+    "hypothesis>=6.100",
+    "pytest>=8.0",
+]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",         # kept as the default type checker; see docs/tech-stack.md for why `ty` is optional-only for now
+    "pytest-cov>=5.0",
+    {include-group = "verify"},
+]
+
+[project.scripts]
+resync = "resync.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/resync"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

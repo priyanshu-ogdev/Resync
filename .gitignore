@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# uv
+.uv-cache/
+
+# Testing
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Type checkers
+.mypy_cache/
+.ty_cache/
+
+# Local data / knowledge indexes (never commit generated indexes)
+*.lance/
+*.kuzu/
+data/
+*.db
+
+# Local model weights
+*.gguf
+
+# Env
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

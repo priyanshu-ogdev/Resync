@@ -1,0 +1,17 @@
+# Example resync.toml for a downstream project using Resync.
+# Copy this to your own repo root and adjust — see docs/architecture.md in the Resync repo for the full
+# field reference.
+
+[project]
+mode = "hybrid"
+target_profile = "pinned"
+agents = ["claude-code"]
+
+[schedule]
+mechanical = "daily"
+semantic = "weekly"
+critical_cve = "instant"
+
+[confidence]
+auto_apply_above = 0.95
+review_required_below = 0.95
