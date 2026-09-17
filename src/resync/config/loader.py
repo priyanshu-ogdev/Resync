@@ -12,7 +12,7 @@ from pathlib import Path
 
 import tomli_w
 
-from resync.config.schema import Policy, ResyncConfig
+from resync.config.schema import AppliedFix, Policy, ResyncConfig
 
 DEFAULT_FILENAME = "resync.toml"
 
@@ -40,6 +40,25 @@ def persist_policy(repo_root: Path, policy: Policy) -> None:
     """
     config = load(repo_root)
     config.policy.append(policy)
+    path = repo_root / DEFAULT_FILENAME
+    with path.open("wb") as f:
+        tomli_w.dump(config.model_dump(mode="json"), f)
+
+
+def persist_applied_fix(repo_root: Path, applied_fix: AppliedFix) -> None:
+    """Append a record of an applied mechanical fix back into resync.toml.
+
+    Called by patch/ast_grep_runner.py's apply() right after a non-idempotent mechanical fix (currently
+    only REORDER) is successfully written to disk — see AppliedFix's docstring for why this exists and
+    docs/adr/0005 for why resync.toml, not a separate side-car file, is the persistence layer: it's the
+    same "confirmed decisions live here" contract `persist_policy` already established, kept in one place
+    rather than split across two files a reviewer would have to cross-reference.
+
+    Mirrors persist_policy's read-modify-write shape deliberately, for the same reason: this must never
+    silently overwrite prior applied-fix history, only append to it.
+    """
+    config = load(repo_root)
+    config.applied.append(applied_fix)
     path = repo_root / DEFAULT_FILENAME
     with path.open("wb") as f:
         tomli_w.dump(config.model_dump(mode="json"), f)
