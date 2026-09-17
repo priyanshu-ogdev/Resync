@@ -48,18 +48,14 @@ class LanguageAdapter(Protocol):
         """Read the ecosystem's lockfile/manifest into a normalized dependency list."""
         ...
 
-    def resolve(
-        self, dependencies: list[Dependency], target_profile: str
-    ) -> ResolvedLockfile:
+    def resolve(self, dependencies: list[Dependency], target_profile: str) -> ResolvedLockfile:
         """Shell out to the ecosystem's native resolver against a chosen target profile.
 
         Never reimplement a dependency solver — see docs/architecture.md#target-stack-resolution.
         """
         ...
 
-    def extract_api_diff(
-        self, package: str, version_old: str, version_new: str
-    ) -> list[KnowledgeRecord]:
+    def extract_api_diff(self, package: str, version_old: str, version_new: str) -> list[KnowledgeRecord]:
         """Produce structured KnowledgeRecords for what changed between two versions of a package."""
         ...
 
@@ -68,8 +64,6 @@ class LanguageAdapter(Protocol):
         semantic cases go through the local-model draft + differential-equivalence path instead."""
         ...
 
-    def capture_deprecation_signals(
-        self, test_run_output: str
-    ) -> list[DeprecationWarning_]:
+    def capture_deprecation_signals(self, test_run_output: str) -> list[DeprecationWarning_]:
         """Parse this ecosystem's own compiler/runtime warning format for live drift signals."""
         ...
