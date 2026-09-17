@@ -4,7 +4,7 @@
 
 Resync keeps a codebase's dependencies and API usage synchronized with reality — for code an AI agent is about to write (real-time prevention) and for code that has already drifted out of date (scheduled, risk-tiered correction) — backed by a differential/property-based behavioral-equivalence check instead of "the tests passed."
 
-Full design rationale: [`docs/architecture.md`](docs/architecture.md). End-to-end flow: [`docs/workflow.md`](docs/workflow.md). Individual decisions and their trade-offs: [`docs/adr/`](docs/adr/).
+Requirements and scope: [`docs/PRD.md`](docs/PRD.md). Full design rationale: [`docs/architecture.md`](docs/architecture.md). End-to-end flow: [`docs/workflow.md`](docs/workflow.md). Individual decisions and their trade-offs: [`docs/adr/`](docs/adr/). Working in this repo with an AI coding agent: [`AGENTS.md`](AGENTS.md).
 
 ## Why
 
@@ -34,7 +34,7 @@ Configuration lives in [`resync.toml`](resync.toml) at the repo root of whicheve
 ```
 src/resync/        core package (server, knowledge, adapters, patch, verification, impact_map, config, cli)
 skills/resync/      companion Agent Skill (SKILL.md)
-docs/               architecture, workflow, and architecture decision records (ADRs)
+docs/               PRD, architecture, workflow, and architecture decision records (ADRs)
 tests/              unit, integration, and fixture repos
 benchmarks/         reserved for a future public migration-correctness benchmark
 examples/           example resync.toml configurations

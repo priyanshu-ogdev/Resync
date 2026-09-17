@@ -30,10 +30,22 @@ capture_deprecation_signals(test_run_output) -> list[DeprecationWarning]
 ## Python (primary, built for the flagship demo)
 
 - `parse_manifest`: reads `pyproject.toml` / `requirements.txt` / lockfiles from `uv`, Poetry, or `pip-compile`.
-- `resolve`: shells out to `uv` (preferred, fastest) or `pip-compile`/Poetry.
-- `extract_api_diff`: custom `ast`/`inspect` diffing between two installed versions of a package. This is
-  genuinely the hardest adapter to build well — no mature, dedicated API-diff tool exists for Python the way it
-  does for the other three ecosystems below, which is worth stating plainly rather than glossing over.
+- `resolve`: shells out to `uv` (preferred, fastest) or `pip-compile`/Poetry. **Built** —
+  `resolve/resolver.py` wraps `uv pip compile - --format pylock.toml`, verified against the real binary
+  (command shape, exit-code-based error classification, resync.toml pin honoring). See
+  `docs/implementation-plan.md`'s Phase 5 entry for the full account, including a real assumption
+  (`uv add --dry-run`) that running the real binary caught before it shipped.
+- `extract_api_diff`: `griffe` (mkdocstrings/griffe, PyPI) — static/AST-based, purpose-built for diffing two
+  loadable versions of a package's public API into typed `Breakage` objects, no runtime import of the target
+  package required. **Correction to this doc's earlier claim** ("no mature, dedicated API-diff tool exists
+  for Python the way it does for the other three ecosystems below") — that was wrong, found wrong by
+  actually researching it rather than repeating the initial competitive-scan assumption; see
+  `knowledge/extract_api_diff.py`'s module docstring for what griffe does and does not hand you for free
+  (notably: no rename-correlation signal — griffe sees a rename as an unrelated removal plus an unrelated,
+  unreported addition — which this project's adapter has to reconstruct with a name-similarity heuristic on
+  top, margin-checked against the runner-up after a real false-positive was caught in testing). Built and
+  pulled forward into Phase 1, not deferred to Phase 5 after all — see `docs/implementation-plan.md`'s Phase
+  1 entry.
 - `structural_patch`: `ast-grep`.
 - `capture_deprecation_signals`: Python's own `DeprecationWarning`/`FutureWarning` captured from a test run.
 

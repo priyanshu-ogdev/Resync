@@ -4,28 +4,40 @@ This document is the detailed companion to the summary table in `docs/architectu
 checked for current maintenance health, not just technical fit — see the Kùzu entry for why that check matters
 in practice.
 
-## Full dependency table
+## Full dependency table (verified, resolved versions)
 
-| Package | Role | Why this one |
-|---|---|---|
-| `mcp` | Official MCP Python SDK | Tier-1 maintained; confirm it targets the 2026-07-28 stateless spec revision before pinning a version — see `docs/adr/0001-mcp-client-server-split.md` |
-| `uvicorn` + `starlette` | HTTP transport for the MCP server | What the official SDK's Streamable HTTP transport runs on |
-| `lancedb` | Vector + full-text index | Confirmed healthy at review time (package health score 83/100, $30M Series A, releases as recent as July 2026) |
-| `kuzu` | Graph index | Point at the actively-maintained community fork (`Vela-Engineering/kuzu`), not the original — see `docs/adr/0004-graph-index-kuzu-fork.md`. Verify the exact install source from the fork's own docs before pinning; it was not independently confirmed to publish under a distinct PyPI name at review time |
-| `fastembed` | Embeddings | ONNX Runtime-based, no PyTorch dependency, ships `nomic-embed-text-v1.5` support natively |
-| `hypothesis` | Property-based equivalence testing | Mature, over a decade of production use, no maintenance concerns |
-| `pytest` | Test runner | Standard |
-| `httpx` | OSV.dev / GitHub Advisory / registry calls | Modern async client, actively maintained, the current standard over `requests` for this kind of use |
-| `sigstore` | Provenance verification | Official client, maintained under the Python Cryptographic Authority / OpenSSF umbrella |
-| `pydantic` (v2) | Schema validation | Required transitively by `mcp` — pin v2 everywhere to avoid a silent v1/v2 split across the dependency tree, one of the most common real-world Python dependency conflicts |
-| `tomli-w` | Writing back to `resync.toml` | `tomllib` (stdlib, Python 3.11+) is read-only; this is the standard companion for writes |
-| `typer` | CLI | Click-based, current standard for Python CLIs |
-| `ast-grep` | Structural patching | Installed as a standalone binary (cargo/npm/release download), not a Python binding — keeps the binding-version-mismatch surface at zero |
+`pyproject.toml` declares version *floors* (`>=`), not exact pins — the table below is what a real, fresh
+`uv sync --all-extras --all-groups` actually resolved to, confirmed by running it, not projected from the
+floors. This resolution is committed as `uv.lock`, deliberately: Resync is dual-purpose (a `pip install`-able
+library *and* a self-hosted server/CLI application), and for the application half specifically,
+reproducibility across contributors and CI matters more than letting every clone re-resolve independently. A
+consumer installing just the PyPI package still resolves freely against the floors in `pyproject.toml`,
+unaffected by the lockfile.
 
-Dev-only: `uv` (Rust-based resolver and package manager, meaningfully faster installs and lockfile resolution
-than pip/Poetry, and the current default for new Python projects), `ruff` (lint + format in one tool,
-replacing flake8/black/isort), and either `mypy` (mature, safe default) or `ty` (Astral's newer Rust-based type
-checker — use it if proven stable enough on your machines, `mypy` otherwise).
+| Package | Resolved version | Role | Why this one |
+|---|---|---|---|
+| `mcp` | 2.2.0 | Official MCP Python SDK | Confirmed to resolve and install cleanly. Pulls in `httpx2` and `mcp-types` as its own transitive dependencies — the SDK's real current dependency shape, found by inspecting the resolved tree (`uv tree`), not assumed from memory |
+| `uvicorn` | 0.52.4 | HTTP transport for the MCP server | |
+| `starlette` | 1.6.0 | HTTP transport, via `mcp` | Verified this is genuinely the official project (not a typosquat) by checking its package metadata directly. Now past 1.0 — newer than expected from general knowledge, and a concrete example of why this project checks live state instead of assuming |
+| `lancedb` | 0.38.0 | Vector + full-text index | Confirmed healthy in an earlier pass (package health score 83/100, $30M Series A) |
+| `kuzu` | 0.11.3 | Graph index (dev/test resolution) | This resolved version is from the original, now-archived PyPI listing — fine for development, but see `docs/adr/0004-graph-index-kuzu-fork.md`: production should point at the actively-maintained fork instead |
+| `fastembed` | 0.8.0 | Embeddings | No `torch` anywhere in its resolved dependency tree — confirmed by inspecting the tree, not just trusting the package description |
+| `httpx` | 0.28.1 | OSV.dev / GitHub Advisory / registry calls (Resync's own use — distinct from `mcp`'s internal `httpx2`) | |
+| `sigstore` | 4.5.0 | Provenance verification | Official client, Python Cryptographic Authority / OpenSSF. `pyproject.toml`'s pin was still `>=3.0` despite this row already recording 4.5.0 — a real docs/pyproject inconsistency, found and fixed to `>=4.0` while building `verification/provenance.py` |
+| `pypi-attestations` | 0.0.30 | PEP 740 attestation verification | PyPA's own purpose-built library — wraps `sigstore` for the specific "verify this PyPI package's Trusted Publishing attestation" task, so `verification/provenance.py` doesn't hand-roll that logic against raw `sigstore` |
+| `pydantic` | 2.13.5 | Schema validation | Single version resolved across the entire tree — no v1/v2 split, confirmed by the resolution succeeding at all, since a split would have failed it |
+| `tomli-w` | 1.2.0 | Writing back to `resync.toml` | `tomllib` (stdlib, 3.11+) is read-only |
+| `typer` | 0.27.2 | CLI | |
+| `rich` | 15.0.0 | CLI output | |
+| `jinja2` | 3.1.6 | Review dashboard templates | |
+| `pyyaml` | 6.0.3 | ast-grep YAML rule generation | |
+| `ast-grep` (binary) | 0.45.3 | Structural patching | Installed separately (`pip install ast-grep-cli`), not part of the Python dependency tree — keeps the binding-version-mismatch surface at zero |
+| `sandbox-runtime` | 0.2.0 | Isolated execution for `verification/sandbox.py` | Confirmed real and installable ahead of Phase 3 starting (see `docs/implementation-plan.md`'s Phase 3 readiness check), and declared in `pyproject.toml`'s `server` extra once Phase 3 actually built code depending on it — found missing from `pyproject.toml` entirely during Phase 3's own review pass despite being discussed here, and fixed then, not before |
+| `cloudpickle` | 3.0+ | Serializes a closure across the process boundary for `verification/sandbox.py`'s Docker+gVisor fallback | Regular `pickle` can't handle arbitrary local closures/lambdas, which is exactly what the sandbox harness needs to ship across |
+| `griffe` | 2.2+ | Static AST-based API diffing for `knowledge/extract_api_diff.py` | Found during Phase 1's research pass to correct an earlier, wrong claim in `docs/multi-language-adapters.md` that no mature Python API-diff tool existed — it does. A second, related wrong claim (that diffing `torch`-ecosystem packages like `peft` "never requires installing them" at all, full stop) was found and corrected during Phase 5: true for runtime *import*, but `griffe.load_pypi`/a plain `pip install` still installs the target's declared dependencies. `pip download --no-deps` + `search_paths` + `allow_inspection=False` is what actually avoids that — confirmed live: diffing real `peft` needs zero `torch` on disk |
+
+Dev-only (`[dependency-groups]`, PEP 735 — never shipped to end users): `uv`, `ruff` 0.16.6, `mypy` 2.3.1,
+`types-PyYAML`, `pytest` 9.1.1, `pytest-cov` 7.1.0, `hypothesis` 6.168.0, `pre-commit`.
 
 ## The one deliberate efficiency swap: no `torch` in the knowledge layer
 

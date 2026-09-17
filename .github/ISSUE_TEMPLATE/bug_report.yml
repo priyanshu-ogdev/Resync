@@ -1,0 +1,36 @@
+name: Bug report
+description: Something didn't work the way docs/architecture.md says it should
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: See docs/architecture.md#risks-and-mitigations — a verification-layer false negative or a
+        bypassed pin is a different class of bug than a CLI ergonomics issue.
+      options:
+        - Verification/correctness (a bad patch was verified as good, or a pin/exception was bypassed)
+        - Supply-chain (an advisory-flagged or unverified package was not caught)
+        - Functional (a feature doesn't work as documented)
+        - Cosmetic/CLI output
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the exact command or MCP tool call, and the repo/fixture it ran against if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Resync version
+    validations:
+      required: true

@@ -1,0 +1,9 @@
+# Default owners for everything, until the project has more than one maintainer to route reviews to.
+# This file is also the routing mechanism the Impact Map's large-scale-change sharding
+# (docs/architecture.md#the-impact-map) is designed to use once a confirmed "sync" spans multiple owned
+# areas of a downstream codebase — Resync's own repo dogfoods the same convention it expects consumers to have.
+*                           @resync-maintainers
+
+/src/resync/verification/  @resync-maintainers
+/src/resync/config/        @resync-maintainers
+/docs/adr/                 @resync-maintainers

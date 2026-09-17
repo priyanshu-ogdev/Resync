@@ -58,3 +58,18 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:
   them — this is the same "sync vs. shift" separation of concerns the Impact Map design uses internally.
 - New adapters (a new target language) should implement the five-function interface documented in
   `docs/architecture.md#multi-language-adapters` and include fixture tests before being merged.
+
+## Local pre-commit hooks
+
+```bash
+uv run pre-commit install
+```
+
+This runs `ruff` (lint + format) on every commit — the same checks CI runs, just earlier, so a PR doesn't
+round-trip through CI to catch something `pre-commit` would have caught locally in a second.
+
+## Codespaces / devcontainer
+
+Opening this repo in a devcontainer (`.devcontainer/devcontainer.json`) installs `uv`, syncs dependencies, and
+installs the pre-commit hooks automatically — useful for a consistent environment across contributors without
+relying on everyone's local Python setup matching.

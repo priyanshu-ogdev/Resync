@@ -1,0 +1,15 @@
+# Dependabot handles the trivial layer this project doesn't need to: simple version-pin bumps for our own
+# CI actions and dependencies with no breaking-change semantics to reason about. Resync's own value is the
+# harder layer on top — semantic API compatibility, not "is there a newer tag." Using Dependabot on ourselves
+# for this narrow purpose isn't a contradiction of the project's thesis, it's exactly the boundary the thesis
+# draws: version bumps are Dependabot's job, code-aware fixes are Resync's.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"

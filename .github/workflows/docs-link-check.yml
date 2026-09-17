@@ -1,0 +1,19 @@
+name: Docs link check
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check internal markdown links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --exclude-mail "**/*.md"
+        # docs/ is heavily cross-referenced by design (architecture.md points into adr/, adr/ points back
+        # into research-foundations.md and competitive-landscape.md, etc.) — a broken internal link here is a
+        # broken citation, not just a typo, given how much of this project's credibility rests on the "why" being traceable.

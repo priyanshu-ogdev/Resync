@@ -56,12 +56,24 @@ uses for vulnerability knowledge (extracting functional semantics, root cause, a
 embedding raw text, which found previously-unknown, CVE-assigned bugs in the Linux kernel):
 
 ```
-{ package, ecosystem, old_symbol, new_symbol, from_version, to_version,
+{ package, ecosystem,
+  old_symbol, new_symbol,             # always the clean symbol path — never a call signature with args
+  parameter, new_parameter,           # set instead, when the change is to one keyword argument
+  old_param_order, new_param_order,   # REORDER only — parallel permutation of position labels
+  from_version, to_version,
   rule_type: rename | reorder | split | merge | return_shape_change |
              behavior_change | removed_no_replacement,
   source: compiler_warning | api_diff_tool | changelog_extract,
   confidence }
 ```
+
+This is the schema as actually implemented (`src/resync/knowledge/schema.py`), not the earlier design sketch —
+`parameter`/`new_parameter` and `old_param_order`/`new_param_order` were added during Phase 1/2 implementation
+after review found that conflating a symbol's identity with the specific detail that changed broke both
+exact-symbol lookup and the router's own matching regex; see `docs/implementation-plan.md`'s Phase 1 and 2
+status for the full history. `KnowledgeRecord` validates its own consistency at construction time (a pydantic
+`model_validator`) — a `rename` with no real target, or a `reorder` whose orders aren't a true permutation of
+each other, cannot be constructed at all, rather than failing downstream inside the patch layer.
 
 Retrieval is hybrid: dense + BM25 + reciprocal rank fusion (the documented foundation that takes a benchmark
 corpus from roughly 44% to 63% factual accuracy over naive RAG), Contextual Retrieval-style context prepending
@@ -73,12 +85,22 @@ agentic retrieval only when needed — the current production consensus rather t
 
 | Change type | Fix strategy | Verification needed |
 |---|---|---|
-| Rename only | Mechanical (ast-grep) | Compile check |
-| Param reorder/rename | Mechanical | Compile check |
-| Param split / merge | Semantic — a value must be derived | Differential equivalence |
-| Return shape change | Semantic, propagates to every call site | Differential equivalence |
-| Silent behavior change, same signature | Nothing to pattern-match | Deprecation-warning capture + differential fuzzing only |
-| Removed, no replacement | No automatic fix is safe | Escalate to `resync.toml` |
+| Rename only | Mechanical (ast-grep) | Compile check, upgraded opportunistically to a live deprecation-window differential check when the old parameter still binds on the installed version (`verification/tier.py`) |
+| Param reorder | Mechanical, safely schedulable unattended | Compile check, plus the applied-already guard (`config.schema.AppliedFix`, `ast_grep_runner.apply(..., repo_root=...)`) — closed in Phase 2, see note below for what's still true about the underlying pattern |
+| Param split / merge | Semantic — a value must be derived | Generator/critic double-pass (`verification/critic.py`'s `Protocol` — concrete implementation is Phase 6's dependency) |
+| Return shape change | Semantic, propagates to every call site | Generator/critic double-pass, same as above |
+| Silent behavior change, same signature | Nothing to pattern-match | Deprecation-warning capture + generator/critic double-pass |
+| Removed, no replacement | No automatic fix is safe | Escalate to `resync.toml`; oracle-signature-check still runs where a claimed remapping exists, purely as a documented signal, not to justify auto-applying anything |
+
+The mechanical layer (`src/resync/patch/ast_grep_runner.py`) went through four review passes during
+implementation and accumulated real, hard-won findings that this table alone doesn't capture — including an
+active data-loss bug (renaming one imported name on a multi-name import line silently deleted the others,
+now fixed), a namesake-collision false-positive risk (now partially mitigated by an import-guard pre-check),
+and — most load-bearing — that a param-reorder fix is not naturally idempotent the way a rename is: a
+positional swap matches its own already-fixed output just as validly and swaps back. See
+`docs/implementation-plan.md`'s Phase 2 status for the complete list, and the module's own docstring for the
+full technical detail behind each one — this file stays intentionally high-level and should be treated as a
+map to that detail, not a replacement for it.
 
 ### Trust and verification layer
 
@@ -137,6 +159,11 @@ pattern proven at extreme scale by Google's own LLM-assisted 32-bit-to-64-bit in
 two-year manual project in half with AI generating 70% of the changes.
 
 ## Build priority
+
+This table is the original hackathon-scoped ordering — still accurate for what a first working demo needs,
+but superseded as the complete picture by `docs/implementation-plan.md`'s full Phase 0–9 sequence, which
+extends through scaling and shipping. Read this table for "what's the minimum to demo," and
+`implementation-plan.md` for "what's the complete path to a released, scalable product."
 
 | Priority | Scope | Status |
 |---|---|---|
