@@ -23,7 +23,9 @@ htmlcov/
 
 # Local data / knowledge indexes (never commit generated indexes)
 *.lance/
+*.lancedb/
 *.kuzu/
+.resync/
 data/
 *.db
 

@@ -22,21 +22,39 @@ dependencies = [
     "pydantic>=2.0,<3",   # keep a single pydantic major version across the whole tree — mcp depends on it too
     "tomli-w>=1.0",       # tomllib (stdlib) is read-only; this is the standard companion for writing resync.toml
     "typer>=0.12",
+    "pyyaml>=6.0",        # patch/ast_grep_runner.py generates YAML rule files for ast-grep's `scan --rule`
+    "packaging>=24.0",    # server/tools.py's real version-range containment check — was previously only a
+    # transitive dep (mcp/lancedb/etc. all pull it in already); declared explicitly once code directly
+    # imports it, per this project's own dependency-hygiene stance (see docs/tech-stack.md)
 ]
 
 [project.optional-dependencies]
 # Genuine, user-facing installable extras only — these ship in the published distribution's
 # metadata, per PEP 621. Someone installing `resync-mcp[server]` should recognize every name here.
 server = [
-    "mcp>=1.0",           # confirm this targets the 2026-07-28 stateless MCP core before pinning further
+    "mcp>=2.0",            # targets the SDK's stateless-core rewrite (spec rev 2026-07-28) — confirmed
+    # against the actually-installed package in server/app.py: v1's `mcp.server.fastmcp.FastMCP` was renamed
+    # to `mcp.server.mcpserver.MCPServer` in v2, with a different tool-registration/run() surface. This was
+    # the exact ">=1.0, confirm before pinning further" gap this project's own comment flagged; now closed.
     "uvicorn>=0.30",
     "starlette>=0.38",
     "lancedb>=0.27",
     "kuzu",               # point this at the actively-maintained fork; verify the exact source in that project's own install docs
     "fastembed>=0.4",     # ONNX-based; deliberately avoids pulling in torch/sentence-transformers for the embedding step
     "httpx>=0.27",        # OSV.dev / GitHub Advisory / registry lookups
-    "sigstore>=3.0",      # supply-chain provenance verification
+    "sigstore>=4.0",       # supply-chain provenance verification — pin corrected from >=3.0 to match the
+    # actually-installed 4.5.0, found via the same "check the real installed package" habit as mcp's pin
+    # above; sigstore 4.x's Verifier/policy API (verification/provenance.py) is what this project builds
+    # against, not assumed compatible with 3.x
+    "pypi-attestations>=0.0.30",  # PyPA's own purpose-built PEP 740 attestation library — verifies a
+    # PyPI package's real provenance bundle end-to-end (signature, certificate identity, Rekor transparency
+    # log inclusion) via sigstore underneath, so verification/provenance.py doesn't hand-roll that logic
     "jinja2>=3.1",        # review dashboard templates, served on the same Starlette app — see docs/ui-design.md#surface-3
+    "griffe>=2.2",        # knowledge/extract_api_diff.py — static AST-based API diffing, no torch/heavy deps
+    "sandbox-runtime>=0.2",  # verification/sandbox.py's primary isolation backend — confirmed installable
+    # and its real API surface confirmed against docs/tech-stack.md's research during Phase 2's sealing
+    "cloudpickle>=3.0",   # verification/sandbox.py's Docker+gVisor fallback needs to serialize a closure
+    # across the container boundary; regular pickle can't handle arbitrary local closures/lambdas
 ]
 cli = [
     "typer>=0.12",
@@ -54,6 +72,7 @@ verify = [
 dev = [
     "ruff>=0.6",
     "mypy>=1.11",         # kept as the default type checker; see docs/tech-stack.md for why `ty` is optional-only for now
+    "types-PyYAML>=6.0",  # mypy stubs for pyyaml — found missing by actually running `make typecheck`, not assumed present
     "pytest-cov>=5.0",
     {include-group = "verify"},
 ]
@@ -69,12 +88,62 @@ build-backend = "hatchling.build"
 packages = ["src/resync"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120  # measured against actual content, not guessed — see docs/tech-stack.md
 target-version = "py311"
+extend-exclude = ["tests/fixtures"]  # these are intentionally incomplete syntactic snippets for ast-grep
+# to match against, not real executable modules — found via `make lint` flagging undefined names in
+# reorder-args/sample.py, which is correct behavior for real code and wrong for a pattern-matching fixture.
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+# typer.Argument(...)/typer.Option(...) as parameter defaults is Typer's required calling convention, not
+# the mutable-default-argument bug B008 exists to catch — found via `make lint` flagging real, correct code.
+"src/resync/cli/main.py" = ["B008"]
+
+[tool.pytest.ini_options]
+# tests/unit/ and tests/integration/ each have their own test_extract_api_diff.py, and neither directory
+# has __init__.py (this project doesn't use package-style test dirs) — pytest's default "prepend" import
+# mode can only have one module on sys.modules per basename, so it collides the second time it sees the
+# name. importlib mode imports each test file by its own path instead, so same-named files in different
+# directories don't collide. Found and fixed here, not worked around by renaming a test file, since the
+# same collision would resurface the next time two suites independently pick the same obvious test name.
+addopts = "--import-mode=importlib"
+markers = [
+    "network: test makes a real outbound network call (e.g. cloning a real repo) and should be skippable in offline CI",
+]
+
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"  # bumped from 3.11 after `make typecheck` failed parsing numpy's own stub file,
+# which uses a `type X = ...` statement only valid under 3.12+ semantics. This is a static-checking target,
+# not a runtime promise — the project's actual floor (pyproject.toml's requires-python) stays ">=3.11"; this
+# setting only controls which type-annotation syntax mypy is willing to parse in stub files it follows into.
 strict = true
+
+[[tool.mypy.overrides]]
+# griffe ships py.typed and needs no override once actually installed (`uv sync --extra server`); this
+# exists only because this specific review environment's vendored venv predates griffe.py.typed's own
+# extraction/verification (no network access to `uv sync` here — see knowledge/extract_api_diff.py's module
+# docstring). Harmless to leave in place after a real sync: ignore_missing_imports on an already-typed
+# package is a no-op, not a downgrade.
+module = "griffe.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# sandbox_runtime and cloudpickle (verification/sandbox.py) are both optional, lazily-imported dependencies
+# behind a try/except ImportError at runtime, deliberately — see that module's docstring. Whether mypy sees
+# them as "not found" (not installed at all) or merely "untyped" (installed but no stubs/py.typed) is itself
+# environment-dependent, which makes a single inline `# type: ignore[...]` comment non-portable: mypy checks
+# each listed code in a multi-code ignore comment individually and flags whichever one didn't actually fire
+# as unused (confirmed by hitting this directly, not assumed) — so no single inline comment satisfies both
+# an environment where the package is missing and one where it's merely untyped. A module-level override
+# sidesteps the whole problem instead of trying to guess which case a given environment will be in.
+module = ["sandbox_runtime.*", "cloudpickle.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pypi_attestations (verification/provenance.py) ships no py.typed marker as of the pinned version — a real,
+# checked gap (not assumed) the same way sandbox_runtime/cloudpickle's were above.
+module = "pypi_attestations.*"
+ignore_missing_imports = true
