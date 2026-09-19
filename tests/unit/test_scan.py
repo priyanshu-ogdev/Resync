@@ -43,7 +43,8 @@ def test_discover_dependencies_handles_extras_and_url_requirements(tmp_path: Pat
     space before version specifiers, sometimes a direct URL instead of a version at all. This is the exact
     kind of thing worth a real test rather than assuming the naive parse handles it."""
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\ndependencies = ["uvicorn[standard]>=0.30", "some-pkg @ https://example.com/pkg.whl"]\n'
+        "[project]\n"
+        'dependencies = ["uvicorn[standard]>=0.30", "some-pkg @ https://example.com/pkg.whl"]\n'
     )
     names = discover_dependencies(tmp_path)
     assert names == ["some-pkg", "uvicorn"]

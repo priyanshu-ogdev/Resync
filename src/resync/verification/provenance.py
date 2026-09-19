@@ -41,9 +41,13 @@ convention exists to prevent.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import httpx
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from pypi_attestations import Publisher
 
 _PYPI_JSON_BASE = "https://pypi.org/pypi"
 _PYPI_INTEGRITY_BASE = "https://pypi.org/integrity"
@@ -141,13 +145,33 @@ def _check_one_file(
                     outcome=ProvenanceOutcome.INVALID,
                     detail=f"{filename}'s attestation failed verification: {exc}",
                 )
+    publisher_description = (
+        _describe_publisher(provenance.attestation_bundles[0].publisher) if provenance.attestation_bundles else None
+    )
     return FileProvenanceResult(
         filename=filename,
         outcome=ProvenanceOutcome.VERIFIED,
-        detail=f"{filename}: verified as published by {provenance.attestation_bundles[0].publisher.repository}"
-        if provenance.attestation_bundles
+        detail=f"{filename}: verified as published by {publisher_description}"
+        if publisher_description
         else f"{filename}: attestation bundle present but empty (no attestations to verify)",
     )
+
+
+def _describe_publisher(publisher: Publisher) -> str:
+    """Human-readable identity for whichever of PEP 740's four real publisher kinds signed this attestation
+    (confirmed live: `GitHubPublisher`/`GitLabPublisher` expose `.repository`, but `GooglePublisher` only has
+    `.email` and `CircleCIPublisher` only has `.project_id`/`.vcs_origin` — a real mypy error caught this
+    when the code assumed every publisher has `.repository`, which only two of the four actually do)."""
+    repository = getattr(publisher, "repository", None)
+    if repository is not None:
+        return str(repository)
+    email = getattr(publisher, "email", None)
+    if email is not None:
+        return f"Google-published ({email})"
+    vcs_origin = getattr(publisher, "vcs_origin", None)
+    if vcs_origin is not None:
+        return str(vcs_origin)
+    return f"{type(publisher).__name__} publisher"
 
 
 def check_provenance(package: str, version: str, *, client: httpx.Client | None = None) -> ProvenanceResult:

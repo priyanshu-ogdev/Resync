@@ -70,7 +70,9 @@ def test_persist_policy_round_trips(tmp_path: pathlib.Path) -> None:
 def test_persist_policy_appends_without_dropping_existing_data(tmp_path: pathlib.Path) -> None:
     """Regression-shaped test: persist_policy must not silently overwrite pins/exceptions already in the
     file when it writes a new policy."""
-    (tmp_path / "resync.toml").write_text('[[pin]]\npackage = "torch"\nmax_version = "2.1.0"\nreason = "test"\n')
+    (tmp_path / "resync.toml").write_text(
+        '[[pin]]\npackage = "torch"\nmax_version = "2.1.0"\nreason = "test"\n'
+    )
     persist_policy(
         tmp_path,
         Policy(

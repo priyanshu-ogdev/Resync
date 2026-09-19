@@ -72,7 +72,8 @@ def test_pinned_symbol_short_circuits_before_touching_the_store(tmp_path: Path) 
     """No .resync/knowledge.lancedb directory exists at all here — if this didn't short-circuit on the pin
     check first, it would crash trying to open a nonexistent database, not just return the wrong answer."""
     (tmp_path / "resync.toml").write_text(
-        '[[exception]]\npath = "transformers.TrainingArguments"\nreason = "frozen legacy code"\nexpires = 2099-01-01\n'
+        '[[exception]]\npath = "transformers.TrainingArguments"\nreason = "frozen legacy code"\n'
+        "expires = 2099-01-01\n"
     )
     result = check_symbol_exists("transformers.TrainingArguments", "5.0.1", tmp_path)
     assert result.outcome == VerificationOutcome.PINNED

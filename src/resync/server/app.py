@@ -23,6 +23,7 @@ from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
+from resync.server.patch_verification import PatchVerificationResult, verify_patch_equivalence
 from resync.server.tools import VerificationResult, check_symbol_exists, verify_package
 
 _REPO_ROOT_ENV_VAR = "RESYNC_REPO_ROOT"
@@ -84,6 +85,21 @@ def build_server(repo_root: Path | None = None) -> MCPServer:
     )
     def _check_symbol_exists(fully_qualified_symbol: str, pinned_version: str) -> VerificationResult:
         return check_symbol_exists(fully_qualified_symbol, pinned_version, resolved_root)
+
+    @server.tool(
+        name="verify_patch_equivalence",
+        description=(
+            "After drafting your own rewrite of a call site affected by a known API change (using your own "
+            "model — this tool does not draft anything itself), hand both the original and rewritten source "
+            "here for a real, deterministic check against resync's knowledge store, rather than relying on "
+            "your own self-assessment. Static checks only in this version — see the tool's own module "
+            "docstring (server/patch_verification.py) for exactly what is and isn't verified."
+        ),
+    )
+    def _verify_patch_equivalence(
+        fully_qualified_symbol: str, old_source: str, new_source: str, pinned_version: str
+    ) -> PatchVerificationResult:
+        return verify_patch_equivalence(fully_qualified_symbol, old_source, new_source, pinned_version, resolved_root)
 
     return server
 

@@ -6,6 +6,137 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### MCP client config generation — 8 real, verified formats via a declarative, scalable registry
+`resync mcp-config` (new CLI command), `resync mcp-config-list`, and `resync mcp-config custom` — see
+`docs/adr/0006-mcp-client-config-generation.md` for the full design account.
+
+- Live research (2026-09) into each client's own current documentation and real bug trackers found **four
+  genuinely different JSON shapes** across eight clients, not one shape with cosmetic differences: Claude
+  Desktop/Claude Code/Cursor/Windsurf/Antigravity share `{"mcpServers": {...}}`; VS Code uses `{"servers":
+  {...}}` with an *explicitly required* `type` field; OpenCode uses `{"mcp": {...}}` with a combined command
+  array and `environment` (not `env`); Zed uses `{"context_servers": {...}}` with command/args *nested
+  inside* a `command` object.
+- Built as a declarative `ClientSpec` registry driving one generic `build_entry()` shape-interpreter, not
+  per-client `if/elif` branches — adding a client (or fixing one that changed its format) is now a data
+  change, not new control flow. `resync mcp-config-list` shows each entry's verification date and known
+  caveats, since this module has no way to detect format drift on its own.
+- `resync mcp-config custom --root-key ... --command-style ...` is a first-class escape hatch for any
+  MCP-compliant agent not yet in the registry — usable immediately, no resync release required, since every
+  compliant client accepts some command/args/env triple by definition of being MCP-compliant at all.
+- Two real, currently-open client bugs found and designed around, not just noted: Claude Desktop deletes its
+  entire `mcpServers` section on startup if it finds a `url`-based entry (never emitted for it, structurally
+  — `ClientSpec.supports_url=False`); OpenCode's `environment` field is confirmed to sometimes not reach the
+  spawned child process in practice.
+- Antigravity's config path is deliberately never auto-written — live research found genuinely conflicting,
+  version-dependent reports across its own Desktop/IDE/CLI surfaces; the command prints the (well-
+  corroborated) JSON and points to Antigravity's own in-app config UI instead of guessing a path that might
+  be wrong for a given install.
+- Every write merges into the existing file (any other MCP servers or unrelated settings already present are
+  left untouched) rather than overwriting it.
+- 37 unit tests + 11 CLI-level integration tests, all against real file I/O and the real CLI entrypoint —
+  including a real round-trip through Zed's nested-object shape and a real pre-existing-file merge.
+- Wired into `resync init`'s next-steps panel for discoverability.
+- Full sweep: **263/263 tests passing**, `ruff`/`mypy` clean across 43 source files.
+
+### `verify_patch_equivalence` MCP tool, a branch merge, and Phase 7 redesigned around a terminal UI
+- New MCP tool `verify_patch_equivalence` (`server/patch_verification.py`): lets a live agent session (any
+  MCP client — Claude Code, opencode, Antigravity, or anything else speaking the protocol, no per-agent code
+  needed) hand resync a self-drafted rewrite and get a real, deterministic check back, rather than trusting
+  its own self-assessment. Deliberately scoped to static, execution-free AST checks in this version — running
+  arbitrary agent-supplied code, even sandboxed, is real security-sensitive work deserving its own pass, not
+  bolted on here. 10 unit tests plus MCP-protocol-level integration tests (in-process `call_tool` and real
+  Streamable HTTP), all passing.
+- Explicitly considered and rejected: shelling out to `claude`/`opencode`/other agent CLIs directly to borrow
+  a live session's model. MCP is already the interoperability layer — every compliant client calls a tool
+  identically regardless of which CLI or model is on the other end; building per-CLI subprocess adapters
+  would mean tracking several independently-versioned external surfaces' own bugs for zero protocol benefit,
+  and is architecturally backwards besides (those agents call *into* resync; spawning them back out is
+  circular). Independently confirmed: MCP's Sampling feature (the protocol-native "ask the client's model"
+  mechanism) is deprecated as of spec 2026-07-28 (SEP-2577) — new implementations should integrate directly
+  with LLM provider APIs, which is exactly Phase 6's existing local-model design.
+- **Merged real, independently-verified work from a separately-uploaded branch**: a more rigorous,
+  lock-protected `_OutputDrainer` in `llm/llama_server.py` (superseding this session's own equivalent fix —
+  both found the same real pipe-buffer deadlock independently, the merged version is simply more careful);
+  a real fix in `verification/provenance.py` for PEP 740's four distinct publisher types (only two of which
+  expose `.repository`); and a real fix tightening `sync --tier semantic`'s per-file gate from "imports the
+  package at all" to "actually references the changed symbol" (reusing `cli/scan.py`'s existing AST-based
+  resolution) — all reviewed and adopted after verifying them directly, not merged on trust.
+- **In the other direction, restored real work that the uploaded branch was missing**:
+  `tests/integration/test_streamable_http.py` (real, protocol-level Streamable HTTP tests — ASGI lifespan
+  handling, DNS-rebinding protection) existed in an earlier line of work on this project and was genuinely
+  verified then, but wasn't present in the uploaded branch. Recreated rather than silently lost in the merge.
+- **Phase 7 redesigned, not just executed as originally planned**: the original plan called for a Starlette-
+  served web dashboard. Reconsidered in favor of `resync init` — a genuinely interactive terminal setup
+  wizard (`cli/init_wizard.py`), fitting this project's local-first design center better than standing up
+  Jinja2 dashboard routes most users would open once. The web dashboard idea is deferred for a future
+  shared/team deployment, not discarded. `resync init` writes `resync.toml` through a guided walkthrough
+  (mode, target profile, auto-apply threshold, optional pins) and offers to seed the knowledge store
+  immediately after; `--yes`/`--no-seed` keep it scriptable when that's what's actually needed.
+  `check`/`sync`/`resolve`/`serve` stay exactly as non-interactive as before — a hard constraint this phase's
+  UI work was not allowed to regress. 10 tests, all passing, driven through real simulated stdin (the actual
+  interactive prompts are exercised, including non-default answers and the existing-config overwrite path).
+- Full sweep after this pass: every file parses, every TOML validates, `ruff`/`mypy` clean (42 source files),
+  **137/139 unit tests passing** (2 legitimate skips), **48/64 integration tests passing** (16 failures are
+  all the same, already-documented missing-`ast-grep`-binary gap, unchanged in kind by this pass).
+
+### Post-upload review: three real bugs found and fixed, none present in the prior session's own account
+Independent review pass on an uploaded zip, following this project's established practice: treat an
+accompanying narrative as an unverified claim, check the actual shipped code, not the story about it. Two
+of the three bugs below turned out to be real work that a prior session's own transcript described doing
+and verifying — but which was never actually present in the zip it produced. Re-implemented and
+re-verified independently rather than trusted.
+
+- **A real, reproduced deadlock in `llm/llama_server.py`, fixed**: `subprocess.Popen(..., stdout=PIPE,
+  stderr=STDOUT)` had nothing draining that pipe while `_wait_until_healthy` polled — an OS pipe's buffer
+  (~64KB on Linux) fills fast under llama.cpp's verbose model-loading logs, and once full, the child's next
+  `write()` blocks forever. Confirmed the deadlock is real by directly reproducing it (a child writing
+  200KB with no concurrent reader hangs past a 5s timeout), then fixed it with a background-thread
+  `_OutputDrainer`, wired through `start()`/`_wait_until_healthy()`. New regression test genuinely proves
+  the fix — not just that the code runs, but that the same reproduction now completes well within timeout.
+- **A real mypy error in `verification/provenance.py`, fixed**: code assumed every PEP 740 publisher type
+  exposes `.repository`, but confirmed live against the real installed `pypi_attestations` package that only
+  `GitHubPublisher`/`GitLabPublisher` do — `GooglePublisher` has `.email`, `CircleCIPublisher` has
+  `.project_id`/`.vcs_origin`. Fixed with a `_describe_publisher` helper covering all four real types.
+- **A real, meaningful correctness/efficiency gap in `resync sync --tier semantic`, fixed**: the loop gated
+  LLM calls on "does this file import the affected package at all" — far coarser than mechanical sync's
+  actual per-symbol `ast-grep` matching. A file importing a package for an unrelated reason would still get
+  sent to the local model to "draft a fix" for a symbol it never references — a wasted call, and a real risk
+  of a spurious edit. Fixed using the already-built, AST-based `cli/scan.py::extract_fully_qualified_symbols`
+  (resolves real import provenance, unlike a naive text search) as an additional gate. New regression test
+  proves the generator is now only called for files that actually reference the changed symbol.
+- Full sweep in this environment (real network, real `ast-grep` binary, real `pypi_attestations`/`sigstore`
+  installed — a materially stronger verification environment than the prior no-network session that produced
+  the uploaded zip): **189/189 tests passing**, `ruff`/`mypy` clean across 40 source files.
+
+### Phase 6 — local model integration: llama-server lifecycle, generator/critic, `sync --tier semantic`
+- New `llm/` package: `llama_server.py` (process lifecycle — start/health-poll/stop, CLI flags and `/health`
+  shape verified against current real llama.cpp documentation before coding against them) and
+  `generator.py` (`draft_patch()` over the real OpenAI-compatible `/v1/chat/completions` shape).
+- `verification/critic.py` gained `LlamaServerCritic`, the concrete implementation of Phase 3's `Critic`
+  Protocol seam. Genuinely adversarial by construction: an `APPROVE` verdict with zero listed concerns is
+  parsed as **rejected**, not approved — the exact rubber-stamp failure mode that Protocol's own docstring
+  warned about when it was first written, now enforced in code, not just prose. Every failure mode
+  (unreachable model, malformed response, a declined `UNABLE_TO_DRAFT` draft) fails closed.
+- `resync sync --tier semantic` implemented for real: starts its own `llama-server` for the sweep
+  (guaranteed stopped via `try/finally`), reuses `ast_grep_runner._package_is_imported`'s existing
+  import-guard safety check, and only ever writes a file the critic actually approved — `--apply` cannot
+  override a rejection.
+- 20 new tests across `llm/llama_server.py` (8), `llm/generator.py` (5), `verification/critic.py`'s new
+  class (7), plus 3 CLI-level integration tests for `sync --tier semantic`.
+- **A real regression found and fixed by running the existing suite**: `test_sync_cli.py`'s "tier not
+  implemented" test asserted `--tier semantic` exits 2 — true before this phase, false after. Updated to
+  target `--tier critical` (still genuinely unimplemented by design), rather than left asserting stale
+  behavior.
+- Full sweep: every file parses, every TOML validates, `ruff`/`mypy` clean (40 source files),
+  **126/128 unit tests passing** (2 legitimate skips), **32/47 integration tests passing** (15 failures are
+  all the same, already-documented missing-`ast-grep`-binary gap — unchanged in kind by this phase, just
+  more surface area now depends on it — and 9 legitimate skips for unreachable-network cases).
+- **Honestly still open**: no network access here to fetch a real `llama-server` binary or GGUF model, so
+  the full loop has not run against a real local model — every component's mechanics are real and tested,
+  but Phase 6's own exit criteria ("completes the full loop locally... with no cloud API calls") needs a
+  real model present to fully close. See `docs/implementation-plan.md`'s Phase 6 entry for the precise
+  account of what is and isn't verified.
+
 ### Independent verification pass, this session — one real classification gap and one real crash bug found and fixed
 Uploaded as `v19` with an accompanying narrative describing prior work; that narrative was treated as
 unverified, and everything below was independently re-checked in this session's own (network-disabled)

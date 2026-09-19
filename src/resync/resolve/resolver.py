@@ -152,7 +152,9 @@ def resolve(requirements: list[str], repo_root: Path, *, timeout_seconds: float 
                 f"connectivity problem, not a genuine negative result: {proc.stderr.strip()}"
             )
         if proc.returncode != 0:
-            raise ResolverError(f"uv pip compile failed (exit {proc.returncode}): {proc.stderr.strip()}")
+            raise ResolverError(
+                f"uv pip compile failed (exit {proc.returncode}): {proc.stderr.strip()}"
+            )
 
         pylock_text = out_path.read_text()
         data = tomllib.loads(pylock_text)

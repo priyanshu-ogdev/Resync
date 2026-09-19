@@ -269,7 +269,9 @@ def extract(
         # PARAMETER_MOVED is yielded once per moved parameter, but a REORDER record belongs once per
         # function — collect the distinct functions first (obj is confirmed the *new*-tree function; see
         # module docstring), then run _detect_reorder once per function below, not once per parameter.
-        reordered_function_paths = {b.obj.path for b in breakages if str(b.kind) == "BreakageKind.PARAMETER_MOVED"}
+        reordered_function_paths = {
+            b.obj.path for b in breakages if str(b.kind) == "BreakageKind.PARAMETER_MOVED"
+        }
         for func_path in sorted(reordered_function_paths):
             new_func = _resolve_path(new_obj, func_path, package)
             old_func = _resolve_path(old_obj, func_path, package)
@@ -277,7 +279,9 @@ def extract(
                 continue  # a path that existed moments ago in breakages but can't be re-resolved is a
                 # griffe/this-module mismatch worth silently skipping over, not crashing the whole extract
                 # over — REORDER is a nice-to-have refinement, not the core signal this function exists for.
-            reorder = _detect_reorder(_function_positional_names(old_func), _function_positional_names(new_func))
+            reorder = _detect_reorder(
+                _function_positional_names(old_func), _function_positional_names(new_func)
+            )
             if reorder is not None:
                 old_order, new_order = reorder
                 records.append(
@@ -355,9 +359,13 @@ def extract(
                 # old tree's same parent.
                 old_parent = breakage.obj.parent
                 old_sibling_names = list(old_parent.members.keys()) if old_parent is not None else []
-                new_parent = _resolve_path(new_obj, old_parent.path, package) if old_parent is not None else None
+                new_parent = (
+                    _resolve_path(new_obj, old_parent.path, package) if old_parent is not None else None
+                )
                 new_sibling_names = list(new_parent.members.keys()) if new_parent is not None else []
-                correlation = _correlate_removed_object(breakage.obj.name, old_sibling_names, new_sibling_names)
+                correlation = _correlate_removed_object(
+                    breakage.obj.name, old_sibling_names, new_sibling_names
+                )
                 if correlation is not None and new_parent is not None:
                     new_symbol = f"{new_parent.path}.{correlation.new_name}"
                     records.append(
@@ -434,7 +442,8 @@ def _download_and_extract(package: str, version: str, dest: Path) -> Path:
     )
     if proc.returncode != 0:
         raise RuntimeError(
-            f"could not download {package}=={version} to diff it (pip exit {proc.returncode}): {proc.stderr.strip()}"
+            f"could not download {package}=={version} to diff it (pip exit {proc.returncode}): "
+            f"{proc.stderr.strip()}"
         )
 
     archives = list(dest.glob("*.tar.gz")) + list(dest.glob("*.zip"))

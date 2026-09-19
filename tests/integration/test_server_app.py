@@ -29,10 +29,13 @@ def pinned_repo(tmp_path: Path) -> Path:
 
 
 def test_both_tools_are_registered_with_the_documented_names(pinned_repo: Path) -> None:
+    """Three tools now, not two — verify_patch_equivalence added alongside the original real-time-gate
+    pair. Updated rather than left asserting the pre-expansion set, per this project's own convention of
+    correcting a stale test to match reality."""
     server = build_server(pinned_repo)
     tools = asyncio.run(server.list_tools())
     names = {t.name for t in tools}
-    assert names == {"verify_package", "check_symbol_exists"}
+    assert names == {"verify_package", "check_symbol_exists", "verify_patch_equivalence"}
 
 
 def test_verify_package_reachable_through_the_real_mcp_call_path(pinned_repo: Path) -> None:
@@ -51,6 +54,24 @@ def test_check_symbol_exists_reachable_through_the_real_mcp_call_path(pinned_rep
         server.call_tool(
             "check_symbol_exists",
             {"fully_qualified_symbol": "legacy.old_call", "pinned_version": "0.9.0"},
+        )
+    )
+    assert result.is_error is not True
+    payload = "".join(getattr(block, "text", "") for block in result.content)
+    assert "pinned" in payload.lower()
+
+
+def test_verify_patch_equivalence_reachable_through_the_real_mcp_call_path(pinned_repo: Path) -> None:
+    server = build_server(pinned_repo)
+    result = asyncio.run(
+        server.call_tool(
+            "verify_patch_equivalence",
+            {
+                "fully_qualified_symbol": "legacy.old_call",
+                "old_source": "legacy.old_call(x=1)",
+                "new_source": "legacy.old_call(x=1)",
+                "pinned_version": "0.9.0",
+            },
         )
     )
     assert result.is_error is not True

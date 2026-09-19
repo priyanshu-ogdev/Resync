@@ -23,7 +23,9 @@ def _fake_provenance(package: str, version: str, outcome: ProvenanceOutcome) -> 
 
 
 def test_resolve_reports_verified_packages_and_exits_zero(tmp_path: Path) -> None:
-    fake_result = ResolveResult(dependencies=[ResolvedDependency(name="requests", version="2.34.2")], pylock_toml="")
+    fake_result = ResolveResult(
+        dependencies=[ResolvedDependency(name="requests", version="2.34.2")], pylock_toml=""
+    )
     with (
         patch("resync.resolve.resolver.resolve", return_value=fake_result),
         patch(

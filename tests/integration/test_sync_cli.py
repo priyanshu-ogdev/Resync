@@ -58,10 +58,20 @@ def test_sync_apply_actually_rewrites_the_file(seeded_repo: Path) -> None:
 
 
 def test_sync_unimplemented_tier_exits_nonzero_without_pretending_to_do_nothing_silently(tmp_path: Path) -> None:
+    """`semantic` is now real (Phase 6) — this test now targets `critical`, the one tier still genuinely
+    unimplemented by design (needs a human reviewer in the loop, never fully automated; see cli/main.py's
+    `sync` docstring). Updated rather than deleted when semantic landed, per this project's own convention
+    of correcting a stale test to match reality instead of leaving it asserting outdated behavior."""
     runner = CliRunner()
-    result = runner.invoke(app, ["sync", str(tmp_path), "--tier", "semantic"])
+    result = runner.invoke(app, ["sync", str(tmp_path), "--tier", "critical"])
     assert result.exit_code == 2
     assert "not implemented" in result.output.lower()
+
+
+def test_sync_unknown_tier_exits_nonzero(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["sync", str(tmp_path), "--tier", "nonsense"])
+    assert result.exit_code == 2
 
 
 def test_sync_with_no_knowledge_store_exits_cleanly(tmp_path: Path) -> None:

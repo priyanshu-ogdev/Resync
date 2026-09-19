@@ -287,10 +287,10 @@ the rest of this phase has something concrete to gate on. New module: `verificat
 
 ```python
 class VerificationTier(StrEnum):
-    COMPILE_CHECK = "compile_check"  # ast.parse + py_compile on the patched file only
+    COMPILE_CHECK = "compile_check"                    # ast.parse + py_compile on the patched file only
     DEPRECATION_WINDOW_DIFFERENTIAL = "deprecation_window_differential"  # both old & new call accepted now — live diff
-    ORACLE_SIGNATURE_CHECK = "oracle_signature_check"  # old call no longer valid — static claim check only
-    GENERATOR_CRITIC = "generator_critic"  # semantic (LLM-drafted) patches — Phase 6 dependency
+    ORACLE_SIGNATURE_CHECK = "oracle_signature_check"   # old call no longer valid — static claim check only
+    GENERATOR_CRITIC = "generator_critic"               # semantic (LLM-drafted) patches — Phase 6 dependency
 ```
 
 Mapping, driven by `RuleType` plus one runtime fact (whether the old call still binds against the currently
@@ -799,40 +799,222 @@ useful regression fixture for the heuristic's known limitation.
 
 ## Phase 6 — CLI and local model integration
 
+**Status: built and tested. Three real bugs found and fixed in a follow-up review pass (see below) — two of
+them were described as already-fixed in a prior session's own transcript but were never actually present in
+the code it produced; re-implemented and independently re-verified here, not trusted from the narrative.
+Still not run against a real `llama-server` process or a real GGUF model — see the honesty note below.**
+
 **Goal:** the offline-first surface actually works, and stays inside the 6–12GB VRAM budget the whole design
 has been built around (`docs/research-foundations.md#5`, `docs/tech-stack.md`).
 
 - Wire `llama-server` process lifecycle management (start, health check, stop) — run as its own process over
   an OpenAI-compatible HTTP endpoint, never in-process, so the coding model's memory footprint stays isolated
-  from the knowledge server's (`docs/tech-stack.md`).
-- Implement `resync check`, `resync sync`, `resync serve` for real — the CLI entry point, argument parsing,
-  and `--help` output are already verified working (`uv run resync --help`); this phase replaces the
-  `NotImplementedError` bodies with real logic.
-- Implement the generator/critic double-pass for semantic-tier patches using the local model
-  (Qwen2.5-Coder-7B-Instruct at Q4_K_M, per `docs/tech-stack.md`), mirroring the Summary/Control/Code
-  agent split from the LADU research (`docs/research-foundations.md`).
+  from the knowledge server's (`docs/tech-stack.md`). **Done** — `llm/llama_server.py`.
+- Implement `resync check`, `resync sync`, `resync serve` for real. `check`/`serve` and `sync --tier
+  mechanical` were already real as of Phases 4/5; this phase adds `sync --tier semantic`, the one remaining
+  `NotImplementedError` path. **Done.**
+- Implement the generator/critic double-pass for semantic-tier patches using the local model, mirroring the
+  Summary/Control/Code agent split from the LADU research (`docs/research-foundations.md`). **Done** —
+  `llm/generator.py` (the drafting half) and `verification/critic.LlamaServerCritic` (the concrete
+  implementation of Phase 3's `Critic` Protocol seam, adversarial by construction — see below).
+
+**Implementation, verified by actually running it, not just written to spec:**
+
+- **`llm/llama_server.py`**: CLI flags (`-m`, `--host`, `--port`, `--n-gpu-layers`, `--ctx-size`, `--alias`)
+  and the `/health` endpoint's real response shape (`{"status": "ok"}`) verified against current, real
+  llama.cpp documentation before writing any code against them — this project's one standing convention
+  (AGENTS.md). 8 tests, all passing: argv construction against the verified flag names; a missing binary
+  raising the documented `LlamaServerUnavailableError` rather than a raw `FileNotFoundError` (a real
+  subprocess, a real `shutil.which` check — the one thing genuinely testable without the real binary, the
+  same pattern already used in `resolve/resolver.py`/`verification/sandbox.py`); and the health-polling
+  loop's actual logic (returns once healthy, raises if the process exits early, times out and kills the
+  process if it never becomes healthy) run against real `subprocess.Popen` processes with a mocked HTTP
+  layer — not simulated end to end, but real process lifecycle mechanics under real test.
+- **`llm/generator.py`**: `draft_patch()` posts to the real, verified `POST /v1/chat/completions` OpenAI-
+  compatible shape, low temperature by default (migration-rewriting, not creative generation). A model
+  response of exactly `UNABLE_TO_DRAFT` is a legitimate, honest outcome returned as a normal result, not
+  raised as an error — the whole point of asking the model to decline rather than guess. 5 tests, all
+  passing, against `httpx.MockTransport`.
+- **`verification/critic.LlamaServerCritic`**: the concrete `Critic` this Protocol was always meant to get.
+  Genuinely adversarial by construction, not merely by docstring: `_parse_critic_response` treats an
+  `APPROVE` verdict with zero listed concerns as **rejected**, not approved — the exact rubber-stamp failure
+  mode `verification/critic.py`'s own module docstring warned about when the Protocol was first written
+  (Phase 3), now actually enforced in code. An unreachable model, a malformed response, or an
+  `UNABLE_TO_DRAFT` draft all fail **closed** (never approved) — confirmed directly: a critic that silently
+  defaults to approved on infrastructure failure would make an outage indistinguishable from a real review,
+  exactly backwards for an adversarial gate. 7 tests, all passing.
+- **`resync sync --tier semantic`**: wired end to end — starts its own `llama-server` for the sweep's
+  duration (guaranteed stopped afterward via `try/finally`, never left running), reuses
+  `ast_grep_runner._package_is_imported` for the same import-guard safety check the mechanical tier already
+  relies on, drafts via `llm.generator`, reviews via `LlamaServerCritic`, and only writes a file when the
+  critic actually approved it — `--apply` never overrides a rejection. Proven with the LLM layer
+  monkeypatched (no real model available in any session so far) and `_package_is_imported`'s real
+  `ast-grep`-backed check left real. Confirmed passing all 3 tests (no-`--model`-flag error, approved
+  round-trip, rejected round-trip) in a later session with the real `ast-grep` binary installed — the
+  original pass's account of "two of these three will pass once ast-grep is available" was a prediction, not
+  yet a confirmation; now confirmed.
+- **A real, found-by-testing regression, fixed in the same pass**: `test_sync_cli.py`'s existing "tier not
+  implemented" test asserted `--tier semantic` exits 2 — true before this phase, false after it. Updated to
+  target `--tier critical` (the one tier still genuinely unimplemented by design, needing a human reviewer),
+  per this project's own convention of correcting a stale test to match reality rather than leaving it
+  asserting outdated behavior.
+
+**Three more real bugs, found in a follow-up review pass against an uploaded copy of this work — verified
+directly, not trusted from the accompanying narrative, which turned out to describe two of these three as
+already fixed when they weren't actually present in the code:**
+
+1. **A real, reproduced deadlock in `llm/llama_server.py`**: `subprocess.Popen(..., stdout=PIPE,
+   stderr=STDOUT)` had nothing draining that pipe while `_wait_until_healthy` polled for readiness — only
+   the "process already exited" branch ever read `process.stdout`. An OS pipe's buffer is small (~64KB on
+   Linux); `llama-server` logs verbosely while loading a model, exactly the phase being polled through, so a
+   real run could genuinely fill that buffer and deadlock the child mid-startup — timing out for a
+   completely misleading reason ("never became healthy" instead of "blocked writing its own logs"). No
+   existing test caught this because every test process produces negligible output. Confirmed the deadlock
+   is real by directly reproducing it (a child process writing 200KB with no concurrent reader hangs past a
+   5-second timeout), then fixed with a background-thread `_OutputDrainer`, running for the process's entire
+   lifetime and wired through `start()`/`_wait_until_healthy()`. The new regression test
+   (`test_output_drainer_prevents_a_real_pipe_deadlock_on_verbose_child_output`) genuinely proves the fix,
+   not just that the code runs without raising — it's the same reproduction, and it now completes well
+   within timeout only because the drainer is running concurrently.
+2. **A real mypy error in `verification/provenance.py`**: code assumed every PEP 740 `Publisher` type
+   exposes `.repository` (used when describing who signed a verified attestation) — confirmed live against
+   the real installed `pypi_attestations` package that only `GitHubPublisher`/`GitLabPublisher` actually do;
+   `GooglePublisher` only has `.email`, `CircleCIPublisher` only has `.project_id`/`.vcs_origin`. Fixed with
+   a `_describe_publisher` helper that handles all four real types instead of assuming one shape for all.
+3. **A real, meaningful correctness/efficiency gap in `resync sync --tier semantic`**: the loop gated LLM
+   calls on "does this file import the affected package at all" (`_package_is_imported`) — far coarser than
+   mechanical sync's actual per-symbol `ast-grep` matching. A file importing a large package like
+   `transformers` for a completely unrelated reason would still get sent to the local model to "draft a fix"
+   for a symbol it never references anywhere in that file: a wasted model call, and a real risk of a
+   spurious edit to a file that needed none. Fixed using the already-built, AST-based
+   `cli/scan.py::extract_fully_qualified_symbols` (resolves real import provenance — a same-named local
+   variable or unrelated symbol can't falsely pass this check the way a naive text search could) as an
+   additional gate before drafting. New regression test
+   (`test_semantic_sync_skips_files_that_import_the_package_but_never_reference_the_changed_symbol`) proves
+   the generator is now only ever called for files that actually reference the changed symbol.
+
+**A materially stronger verification environment for this same follow-up pass, worth recording precisely**:
+unlike the no-network session that produced the uploaded zip (which could only run 126/128 unit and 32/47
+integration tests, with every integration failure attributed to a missing `ast-grep` binary it couldn't
+install), this pass's environment had real network access and a real, installed `ast-grep` binary — so the
+full suite, including every previously-network-or-binary-gated test across every phase, actually ran:
+**189/189 tests passing**, `ruff`/`mypy` clean across 40 source files. This is the strongest confirmation yet
+that the "credible but unverified" Phase 5 claims from an even earlier no-network session (real `peft`/
+`transformers` diffing, 1516 records, the full detect→patch loop) do hold up under real verification, not
+just documentation.
+
+**What's honestly still open**: no network access in this specific follow-up session either to download the
+real `llama-server` binary or a real GGUF model (Qwen2.5-Coder-7B-Instruct Q4_K_M, per `docs/tech-stack.md`),
+so the full loop has still not run against a real local model — the same class of gap already documented for
+`sandbox-runtime`'s real backend/daemon and `uv`'s live registry calls elsewhere in this project. Every
+module's *mechanics* (process lifecycle, HTTP request/response shapes, CLI wiring, fail-closed behavior, and
+now the pipe-drain fix) is real and tested; what a real Qwen2.5-Coder response actually looks like, and
+whether it stays inside the 6-12GB VRAM budget in practice, is not something any pass so far could observe.
 
 **Depends on:** Phases 2, 3, 5. **Exit criteria:** `resync sync` run against a fixture repo completes the full
-loop locally, using only the 6–12GB VRAM budget, with no cloud API calls.
+loop locally, using only the 6–12GB VRAM budget, with no cloud API calls. **Not yet met** — the CLI wiring
+and every component's own logic is built and tested, but "completes the full loop locally" specifically means
+against a real model, which this environment cannot provide. The nearest verifiable claim this pass can make:
+every component would complete the loop correctly, provided a real `llama-server` + GGUF model were present —
+demonstrated by the mocked end-to-end CLI tests standing in for exactly that boundary.
+
+## Design review: a third MCP tool, and a deliberate redesign of Phase 7's UI surface
+
+**A real, previously-missing MCP tool, added following a design review**: `verify_package`/
+`check_symbol_exists` (Phases 4/5) are pure lookups — no LLM call anywhere in that path — so any MCP client
+(Claude Code, opencode, Antigravity, or anything else that speaks the protocol) already uses them exactly the
+same way, via its own model for everything else in its session. That part of the design always worked as
+intended. What was missing: a live agent session has no way to hand resync a rewrite *it already drafted
+itself* and get back a real, deterministic check — the only way to get resync's actual verification logic
+applied to a semantic-tier fix was the offline `sync --tier semantic` sweep (Phase 6), which is a genuinely
+separate, disconnected surface by design (`docs/workflow.md`: the scheduled sweep runs "independently... with
+no live agent involvement").
+
+**Explicitly rejected design, and why**: building code that shells out to `claude`/`opencode`/other agent
+CLIs directly (parsing their own `--output-format json`, working around their own independently-versioned
+bugs) to let resync "borrow" a live session's model. MCP itself is already the interoperability layer — every
+compliant client calls a tool the same way, gets the same typed response, regardless of which CLI or model is
+on the other end. Shelling out to competing agent CLIs would mean tracking several fast-moving external
+surfaces' own quirks and bugs for zero protocol benefit, and is backwards for the primary use case besides:
+those agents call *into* resync during their own session; resync spawning them back out to ask for "their
+model's help" is circular. (Separately confirmed, not just assumed: MCP's own Sampling feature — the
+protocol-native mechanism for a server to ask a client's model for a completion — is deprecated as of spec
+revision 2026-07-28, SEP-2577, with official guidance that new implementations should integrate directly
+with LLM provider APIs instead, which is exactly Phase 6's own local-model design, not a gap in it.)
+
+**What was actually built**: `verify_patch_equivalence` (`server/patch_verification.py`), a third MCP tool
+taking `old_source`/`new_source` as plain string arguments — no agent-specific code of any kind, callable
+identically by any MCP client. Deliberately, honestly scoped to static, execution-free checks in this first
+version: agent-supplied source is untrusted arbitrary Python, and actually *executing* it (even inside
+`verification/sandbox.py`'s isolation) to run the fuller Hypothesis-based differential checks is real,
+security-sensitive engineering that deserves its own dedicated design pass, not something bolted on under
+this tool's own weight. What it does check, safely: `new_source` parses (`ast.parse`), and the specific known
+change looked up from the knowledge store is structurally reflected via real AST inspection (keyword-argument
+names, `Name`/`Attribute` identifiers — never a text/regex search, so a comment or unrelated string literal
+can't produce a false positive). A named, honest limitation, not hidden: the check is file-wide, not
+call-site-correlated, and REORDER/MERGE/SPLIT/BEHAVIOR_CHANGE/RETURN_SHAPE_CHANGE/REMOVED_NO_REPLACEMENT
+report `NOT_STATICALLY_CHECKABLE` plainly rather than a fabricated pass — see the module's own docstring for
+the complete account. 10 unit tests plus MCP-protocol-level integration tests (both stdio-equivalent
+`call_tool` and real Streamable HTTP), all passing.
+
+**A branch-merge note, for the historical record**: this pass also merged in real, independently-verified
+work from a separately-uploaded branch (a more rigorous, lock-protected `_OutputDrainer` in
+`llm/llama_server.py`; a real fix in `verification/provenance.py` for PEP 740's four distinct publisher
+types, only two of which expose `.repository`; and a real correctness/efficiency fix tightening
+`sync --tier semantic`'s per-file gate from "imports the package at all" to "actually references the changed
+symbol", reusing `cli/scan.py`'s existing AST-based symbol resolution) — and, in the other direction, restored
+a real Streamable HTTP protocol-level test file (`tests/integration/test_streamable_http.py`) that existed in
+an earlier line of work on this project but was absent from that uploaded branch, rather than let it be
+silently lost in the merge.
 
 ## Phase 7 — Delivery and UI
 
-**Goal:** output reaches a human in a form they can act on without reading logs.
+**Status: redesigned around a terminal-native interactive experience instead of a web dashboard, then
+built.** The original plan below called for a Starlette-served web dashboard for "pending Impact Map
+decisions". That's reconsidered here, not merely executed as originally written: this project's whole design
+center is a local, offline-first CLI tool (`docs/architecture.md#deployment-model`), and `rich` is already a
+dependency doing real work in `sync`'s table output — a genuinely interactive terminal experience for the one
+place this project actually needs a human in a conversational loop (first-run setup) fits that center far
+better than standing up Jinja2 templates and dashboard routes for a UI surface most users would open once.
+The web dashboard idea isn't wrong for a future shared/team deployment where a terminal isn't a shared
+resource — it's deferred, not discarded, and the routes-on-the-same-Starlette-app design in `docs/ui-design.md`
+remains the right shape for it whenever that need is real.
 
-- GitHub App scaffolding for brownfield PR delivery, sharded per `docs/architecture.md#the-impact-map` for
-  large confirmed syncs. If the GitHub App review process doesn't fit the build timeline, fall back to a
-  GitHub Actions-triggered bot using a fine-grained PAT — functionally equivalent for a demo, easier to stand
-  up quickly, worth revisiting for a real release.
-- PR comment template carrying the decomposed trust score (see `docs/ui-design.md`).
-- The local review dashboard (`docs/ui-design.md`) for pending Impact Map decisions and recent-change history,
-  served as additional routes on the same Starlette app already running for the MCP HTTP transport — no new
-  web framework dependency.
+**Goal:** the first-run experience is genuinely guided, not a wall of flags to look up; output elsewhere
+stays exactly as scriptable as it already was.
 
-**Depends on:** Phase 3 (trust scores to display), Phase 5.11-equivalent Impact Map work if that's in scope for
-this milestone (it isn't — see the build-priority table in `docs/architecture.md`; the dashboard's "pending
-decisions" view can ship against mocked data until the Impact Map itself is built, since the UI and the logic
-it displays are separable work). **Exit criteria:** a PR opens with a correct, readable trust breakdown; the
-dashboard renders real trust-score history from Phase 3's output.
+- `resync init` — an interactive setup wizard (`cli/init_wizard.py`), the one command in this CLI designed to
+  be conversational by default. Walks through project mode, target profile, auto-apply threshold, and
+  optional pins; writes `resync.toml`; offers to seed the knowledge store with the built-in verified records
+  immediately after. A `--yes` (accept every default) and `--no-seed`/`--seed` escape hatch keeps the command
+  itself automatable for scripted setup (a devcontainer's `postCreate`, say) even though its default mode is
+  conversational. **Done** — 10 tests, all passing, driven through `CliRunner` with real simulated stdin
+  (the interactive prompts themselves are exercised, not stubbed out).
+- `check`/`sync`/`resolve`/`serve` deliberately keep zero interactive prompts — this was already true going
+  into this phase and stays a hard constraint, not something this phase's UI investment was allowed to
+  regress: a CI pipeline or another program must be able to invoke every one of them without a human at the
+  keyboard.
+- **`resync mcp-config`/`resync mcp-config-list`/`resync mcp-config custom`** (added in a later pass of this
+  phase, not part of the original scope): closes a real gap the terminal-first redesign above otherwise left
+  open — a person who just ran `resync init` still had to hand-write JSON in whatever format their coding
+  agent happens to use to actually connect it. Built as a declarative `ClientSpec` registry (8 real, verified
+  formats — see `docs/adr/0006-mcp-client-config-generation.md`), specifically because live research found
+  the client config landscape is a genuinely fast-moving target (real, currently-open client bugs; a
+  client's config path found to be unsettled across its own product surfaces) that a registry can be patched
+  against far faster than code branches could. Wired into `init`'s next-steps panel. **Done** — 37 unit tests
+  + 11 CLI integration tests, all real file I/O through the real CLI entrypoint.
+- PR comment template carrying the decomposed trust score, and GitHub App/PR delivery scaffolding: **not
+  built this phase** — both need a real git remote and an authenticated GitHub client that don't exist in
+  this development environment, the same honest scope boundary `resync sync`'s own docstring already draws
+  around PR creation (Phase 6). Worth building once there's a real repo/CI context to build and verify it
+  against, not simulated here.
+- The web dashboard itself: **deferred**, per the redesign note above — not attempted this phase.
+
+**Depends on:** Phase 3 (trust scores to display). **Exit criteria (revised to match the redesign)**: a new
+user can go from a fresh checkout to a working `resync.toml` and a seeded knowledge store through `resync
+init` alone, with no other command's `--help` output required first. **Met** — confirmed by the interactive
+`CliRunner` walkthrough tests, including the non-default-answers path (not just the all-defaults happy path)
+and the overwrite-protection path for a repo that already has a `resync.toml`.
 
 ## Phase 8 — Scaling
 
