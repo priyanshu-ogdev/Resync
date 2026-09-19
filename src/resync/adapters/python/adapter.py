@@ -36,16 +36,31 @@ class PythonAdapter(LanguageAdapter):
 
     def parse_manifest(self, repo_path: Path) -> list[Dependency]:
         pyproject_path = repo_path / "pyproject.toml"
-        if not pyproject_path.exists():
+        req_path = repo_path / "requirements.txt"
+        
+        requirements: list[str] = []
+        
+        if pyproject_path.exists():
+            with pyproject_path.open("rb") as fh:
+                data = tomllib.load(fh)
+            project = data.get("project", {})
+            requirements.extend(project.get("dependencies", []))
+            for group_reqs in project.get("optional-dependencies", {}).values():
+                requirements.extend(group_reqs)
+        elif req_path.exists():
+            raw_bytes = req_path.read_bytes()
+            if b'\x00' in raw_bytes:
+                text = raw_bytes.decode("utf-16", errors="ignore")
+            else:
+                text = raw_bytes.decode("utf-8", errors="ignore")
+            
+            for line in text.splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and not line.startswith("-"):
+                    requirements.append(line)
+        else:
             return []
         
-        with pyproject_path.open("rb") as fh:
-            data = tomllib.load(fh)
-
-        project = data.get("project", {})
-        requirements: list[str] = list(project.get("dependencies", []))
-        for group_reqs in project.get("optional-dependencies", {}).values():
-            requirements.extend(group_reqs)
 
         names = {_requirement_name(r) for r in requirements}
         return [PythonDependency(name=n, version="*") for n in sorted(names) if n]
