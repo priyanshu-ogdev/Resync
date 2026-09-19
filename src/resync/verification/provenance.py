@@ -234,10 +234,15 @@ def check_provenance(package: str, version: str, *, client: httpx.Client | None 
                 ],
             )
 
-        files = [
-            _check_one_file(http_client, package, version, f["filename"], f["digests"]["sha256"])
-            for f in release_data.get("urls", [])
-        ]
+        import concurrent.futures
+
+        def _check_wrapper(f: dict) -> FileProvenanceResult:
+            return _check_one_file(http_client, package, version, f["filename"], f["digests"]["sha256"])
+
+        urls = release_data.get("urls", [])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            files = list(executor.map(_check_wrapper, urls))
+            
         if not files:
             files = [
                 FileProvenanceResult(

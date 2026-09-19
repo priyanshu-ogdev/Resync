@@ -55,9 +55,7 @@ class TestBuildEntryShapeInterpreter:
         assert "args" not in entry
 
     def test_nested_object_style(self) -> None:
-        entry = build_entry(
-            command="resync", args=["serve"], root_key="context_servers", command_style="nested_object"
-        )
+        entry = build_entry(command="resync", args=["serve"], root_key="context_servers", command_style="nested_object")
         assert entry["command"] == {"path": "resync", "args": ["serve"]}
 
     def test_type_field_only_included_when_requested(self) -> None:
@@ -69,9 +67,7 @@ class TestBuildEntryShapeInterpreter:
         assert with_type["type"] == "stdio"
 
     def test_extra_fields_are_merged_in(self) -> None:
-        entry = build_entry(
-            command="x", args=[], root_key="k", command_style="array", extra_fields={"enabled": True}
-        )
+        entry = build_entry(command="x", args=[], root_key="k", command_style="array", extra_fields={"enabled": True})
         assert entry["enabled"] is True
 
     def test_unknown_command_style_raises(self) -> None:

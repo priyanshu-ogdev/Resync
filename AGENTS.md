@@ -75,13 +75,14 @@ docs, it's stale — this file is the canonical account of what changed and why.
 - `src/resync/verification/` — `tier.py`/`differential.py`/`trust_score.py`/`sandbox.py` are built and
   tested for three of four verification tiers (compile-check, deprecation-window-differential,
   oracle-signature-check); `critic.py` is a `Protocol` seam only, awaiting Phase 6's local-model-backed
-  implementation. `src/resync/server/` — `tools.py` (verify_package/check_symbol_exists) and `app.py` (the
+  implementation (now built in `src/resync/llm/`). `src/resync/server/` — `tools.py` (verify_package/check_symbol_exists) and `app.py` (the
   real MCP stdio/Streamable-HTTP transport wiring) are both built and tested, including against a real MCP
   client over a real stdio subprocess. `src/resync/cli/main.py`'s `serve`, `check`, and `sync` commands are
   all wired for real (`check`/`sync` via `cli/scan.py` and the real `patch/ast_grep_runner`, not stubs
-  anymore). `src/resync/resolve/` (resolver.py, wraps real `uv`) and `verification/provenance.py` (real
-  PyPI Integrity API + pypi_attestations/sigstore) are both built and tested — see `docs/implementation-
-  plan.md`'s Phase 5 entry. `src/resync/impact_map/` — interface only, not yet built; see
+  anymore). `verification/provenance.py` (real PyPI Integrity API + pypi_attestations/sigstore) is built and tested.
+- `src/resync/adapters/` — Language-specific implementations (e.g. `adapters/python/resolver.py` wrapping real `uv`, and `adapters/python/extract_api_diff.py`).
+- `src/resync/llm/` — Phase 6's local-model-backed implementation (`generator.py`, `llama_server.py`) and critic model support.
+- `src/resync/impact_map/` — interface only, not yet built; see
   `docs/implementation-plan.md` for phase status before assuming something here is finished.
 - `docs/adr/` — one file per significant decision, with alternatives considered and consequences. Add one
   (`docs/adr/0000-template.md`) for any new architectural decision; don't just change the code and leave the

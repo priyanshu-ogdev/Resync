@@ -181,7 +181,7 @@ REGISTRY: dict[str, ClientSpec] = {
             last_verified="2026-09",
             notes='Per VS Code\'s own current MCP developer guide: unlike every "separate"-style client '
             "above, VS Code does NOT infer the transport from which keys are present — a server block "
-            "missing \"type\" is invalid. Project-level (.vscode/mcp.json) only; user-level servers need "
+            'missing "type" is invalid. Project-level (.vscode/mcp.json) only; user-level servers need '
             'the "MCP: Open User Configuration" command, not a file this module can target.',
         ),
         ClientSpec(

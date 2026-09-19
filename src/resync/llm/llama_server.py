@@ -194,8 +194,7 @@ def _wait_until_healthy(
         exit_code = process.poll()
         if exit_code is not None:
             raise LlamaServerUnavailableError(
-                f"llama-server exited with code {exit_code} before becoming healthy. "
-                f"Output: {drainer.output()[-2000:]}"
+                f"llama-server exited with code {exit_code} before becoming healthy. Output: {drainer.output()[-2000:]}"
             )
         try:
             response = client.get(f"{base_url}/health")

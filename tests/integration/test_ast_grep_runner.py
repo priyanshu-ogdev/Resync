@@ -147,9 +147,7 @@ def test_reorder_pattern_itself_is_still_not_idempotent_without_a_repo_root(
     assert len(second_pass_matches) == 1
 
 
-def test_reorder_apply_with_repo_root_is_safe_to_run_unattended_twice(
-    tmp_path: Path, reorder_fixture: Path
-) -> None:
+def test_reorder_apply_with_repo_root_is_safe_to_run_unattended_twice(tmp_path: Path, reorder_fixture: Path) -> None:
     """The applied-already guard: calling apply() twice with the same repo_root and the same record must
     swap once and then do nothing on the second call, instead of oscillating back and forth — this is the
     property an unattended scheduled sweep actually needs (see taxonomy.py and ast_grep_runner.py's module

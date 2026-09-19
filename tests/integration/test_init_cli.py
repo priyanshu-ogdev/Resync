@@ -69,9 +69,7 @@ def test_interactive_walkthrough_choosing_non_default_mode(tmp_path: Path) -> No
 
 def test_interactive_walkthrough_adding_pins(tmp_path: Path) -> None:
     # pins? y -> package, max_version, reason, add another? n -> seed now? n
-    result = runner.invoke(
-        app, ["init", str(tmp_path)], input="\n\n\ny\nrequests\n2.0.0\ntest pin\nn\nn\n"
-    )
+    result = runner.invoke(app, ["init", str(tmp_path)], input="\n\n\ny\nrequests\n2.0.0\ntest pin\nn\nn\n")
     assert result.exit_code == 0, result.output
     with (tmp_path / "resync.toml").open("rb") as f:
         data = tomllib.load(f)

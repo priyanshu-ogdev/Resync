@@ -287,10 +287,10 @@ the rest of this phase has something concrete to gate on. New module: `verificat
 
 ```python
 class VerificationTier(StrEnum):
-    COMPILE_CHECK = "compile_check"                    # ast.parse + py_compile on the patched file only
+    COMPILE_CHECK = "compile_check"  # ast.parse + py_compile on the patched file only
     DEPRECATION_WINDOW_DIFFERENTIAL = "deprecation_window_differential"  # both old & new call accepted now — live diff
-    ORACLE_SIGNATURE_CHECK = "oracle_signature_check"   # old call no longer valid — static claim check only
-    GENERATOR_CRITIC = "generator_critic"               # semantic (LLM-drafted) patches — Phase 6 dependency
+    ORACLE_SIGNATURE_CHECK = "oracle_signature_check"  # old call no longer valid — static claim check only
+    GENERATOR_CRITIC = "generator_critic"  # semantic (LLM-drafted) patches — Phase 6 dependency
 ```
 
 Mapping, driven by `RuleType` plus one runtime fact (whether the old call still binds against the currently

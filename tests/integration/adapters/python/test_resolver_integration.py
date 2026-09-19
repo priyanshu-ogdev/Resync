@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from resync.resolve.resolver import ResolvedDependency, ResolverError, resolve
+from resync.adapters.python.resolver import ResolvedDependency, ResolverError, resolve
 from tests.integration.conftest import requires_network
 
 pytestmark = [pytest.mark.skipif(shutil.which("uv") is None, reason="uv not on PATH"), requires_network]

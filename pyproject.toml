@@ -120,6 +120,7 @@ python_version = "3.12"  # bumped from 3.11 after `make typecheck` failed parsin
 # not a runtime promise — the project's actual floor (pyproject.toml's requires-python) stays ">=3.11"; this
 # setting only controls which type-annotation syntax mypy is willing to parse in stub files it follows into.
 strict = true
+exclude = ["^tests/fixtures/"]
 
 [[tool.mypy.overrides]]
 # griffe ships py.typed and needs no override once actually installed (`uv sync --extra server`); this

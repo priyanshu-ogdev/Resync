@@ -20,7 +20,13 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from resync.server.tools import VerificationOutcome, VerificationResult, check_symbol_exists, verify_package
+from resync.adapters.registry import get_adapter
+from resync.server.tools import (
+    VerificationOutcome,
+    VerificationResult,
+    check_symbol_exists,
+    verify_package,
+)
 
 _EXCLUDED_DIR_NAMES = {
     ".git",
@@ -43,13 +49,13 @@ _EXCLUDED_DIR_NAMES = {
 _NAME_STOP_CHARS = set("[]<>=!~; @")
 
 
-def _requirement_name(requirement: str) -> str:
-    stop = len(requirement)
-    for ch in _NAME_STOP_CHARS:
-        idx = requirement.find(ch)
-        if idx != -1:
-            stop = min(stop, idx)
-    return requirement[:stop].strip()
+
+def discover_dependencies(repo_root: Path) -> list[str]:
+    """Package names from the repository's manifest file (e.g., pyproject.toml, package.json, Cargo.toml).
+    Returns `[]`, not an error, when there's no manifest file or no dependencies are found."""
+    adapter = get_adapter(repo_root)
+    dependencies = adapter.parse_manifest(repo_root)
+    return [dep.name for dep in dependencies]
 
 
 def discover_python_files(repo_root: Path) -> list[Path]:
@@ -61,26 +67,6 @@ def discover_python_files(repo_root: Path) -> list[Path]:
             continue
         files.append(path)
     return files
-
-
-def discover_dependencies(repo_root: Path) -> list[str]:
-    """Package names from `pyproject.toml`'s `[project.dependencies]` and every group under
-    `[project.optional-dependencies]`. Returns `[]`, not an error, when there's no `pyproject.toml` — a
-    project that doesn't declare dependencies this way (e.g. a bare `requirements.txt` project) isn't a scan
-    failure, just nothing for this particular check to find."""
-    pyproject_path = repo_root / "pyproject.toml"
-    if not pyproject_path.exists():
-        return []
-    with pyproject_path.open("rb") as fh:
-        data = tomllib.load(fh)
-
-    project = data.get("project", {})
-    requirements: list[str] = list(project.get("dependencies", []))
-    for group_reqs in project.get("optional-dependencies", {}).values():
-        requirements.extend(group_reqs)
-
-    names = {_requirement_name(r) for r in requirements}
-    return sorted(n for n in names if n)
 
 
 def resolve_pinned_version(package: str, repo_root: Path) -> str | None:

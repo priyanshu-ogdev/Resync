@@ -19,7 +19,7 @@ import pytest
 
 griffe = pytest.importorskip("griffe")
 
-from resync.knowledge.extract_api_diff import extract  # noqa: E402
+from resync.adapters.python.extract_api_diff import extract  # noqa: E402
 from resync.patch import ast_grep_runner  # noqa: E402
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
@@ -34,9 +34,7 @@ def test_full_loop_transformers_pipeline_rename(tmp_path: Path) -> None:
     records = extract(
         package="transformers", old_ref="4.31.0", new_ref="4.32.0", from_version="4.31.0", to_version="4.32.0"
     )
-    record = next(
-        r for r in records if r.old_symbol.endswith("pipelines.pipeline") and r.parameter == "use_auth_token"
-    )
+    record = next(r for r in records if r.old_symbol.endswith("pipelines.pipeline") and r.parameter == "use_auth_token")
     assert record.new_parameter == "token"
 
     target = tmp_path / "sample.py"
@@ -65,9 +63,7 @@ def test_full_loop_peft_gather_params_ctx_documents_a_real_heuristic_limitation(
         pytest.skip("pip required")
 
     records = extract(package="peft", old_ref="0.10.0", new_ref="0.12.0", from_version="0.10.0", to_version="0.12.0")
-    record = next(
-        r for r in records if r.old_symbol.endswith("gather_params_ctx") and r.parameter == "module"
-    )
+    record = next(r for r in records if r.old_symbol.endswith("gather_params_ctx") and r.parameter == "module")
     # Documents the known-wrong current behavior (see NOTES.md) — the structurally correct rename target is
     # "param" (same position), but the heuristic currently picks "fwd_module" (higher text similarity).
     # This assertion should be the first thing to change if/when the positional-tiebreaker fix lands.

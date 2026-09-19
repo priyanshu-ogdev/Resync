@@ -47,9 +47,7 @@ def test_wrong_fix_does_not_match(seeded_repo: Path) -> None:
 
 
 def test_invalid_syntax_is_caught_without_touching_the_knowledge_store(seeded_repo: Path) -> None:
-    result = verify_patch_equivalence(
-        "transformers.TrainingArguments", "x", "def broken(:", "5.0.1", seeded_repo
-    )
+    result = verify_patch_equivalence("transformers.TrainingArguments", "x", "def broken(:", "5.0.1", seeded_repo)
     assert result.outcome == PatchVerificationOutcome.INVALID_SYNTAX
 
 

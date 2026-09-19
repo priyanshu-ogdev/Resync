@@ -10,7 +10,7 @@ griffe isn't importable.
 
 from __future__ import annotations
 
-from resync.knowledge.extract_api_diff import (
+from resync.adapters.python.extract_api_diff import (
     _best_name_match,
     _correlate_removed_object,
     _correlate_removed_parameter,

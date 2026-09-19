@@ -11,6 +11,6 @@ case documented in `tests/fixtures/peft-param-rename/NOTES.md`.
 - **Correct fix**: rewrite the `use_auth_token=` keyword argument to `token=` on any call to `pipeline`.
 
 `sample.py` uses the **old** name — matching `resync sync`'s mechanical tier should rewrite it to `token=`.
-Ground truth confirmed via `resync.knowledge.extract_api_diff.extract("transformers", "4.31.0", "4.32.0",
+Ground truth confirmed via `resync.adapters.python.extract_api_diff.extract("transformers", "4.31.0", "4.32.0",
 "4.31.0", "4.32.0")`, which detects this exact rename with confidence 0.78 among 1516 real records for this
 version pair — see `tests/integration/test_extract_api_diff.py`.

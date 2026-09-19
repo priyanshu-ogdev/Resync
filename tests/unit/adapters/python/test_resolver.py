@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from resync.resolve.resolver import ResolvedDependency, ResolverError, ResolverUnavailableError, resolve
+from resync.adapters.python.resolver import ResolvedDependency, ResolverError, ResolverUnavailableError, resolve
 
 _SAMPLE_PYLOCK = """\
 lock-version = "1.0"
@@ -80,9 +80,7 @@ def test_resolve_raises_resolver_unavailable_on_timeout(tmp_path: Path) -> None:
 
 
 def test_resolve_passes_pin_constraints_from_resync_toml(tmp_path: Path) -> None:
-    (tmp_path / "resync.toml").write_text(
-        '[[pin]]\npackage = "urllib3"\nmax_version = "1.26.20"\nreason = "test"\n'
-    )
+    (tmp_path / "resync.toml").write_text('[[pin]]\npackage = "urllib3"\nmax_version = "1.26.20"\nreason = "test"\n')
     captured_cmd: list[str] = []
     captured_constraints = {"text": ""}
 

@@ -21,7 +21,7 @@ import pytest
 
 griffe = pytest.importorskip("griffe")
 
-from resync.knowledge.extract_api_diff import extract  # noqa: E402
+from resync.adapters.python.extract_api_diff import extract  # noqa: E402
 from resync.knowledge.schema import RuleType  # noqa: E402
 
 pytestmark = pytest.mark.network

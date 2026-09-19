@@ -20,9 +20,7 @@ def _client(handler) -> httpx.Client:
 
 
 def test_pinned_package_short_circuits_before_any_network_call(tmp_path: Path) -> None:
-    (tmp_path / "resync.toml").write_text(
-        '[[pin]]\npackage = "legacy-pkg"\nmax_version = "1.0.0"\nreason = "frozen"\n'
-    )
+    (tmp_path / "resync.toml").write_text('[[pin]]\npackage = "legacy-pkg"\nmax_version = "1.0.0"\nreason = "frozen"\n')
 
     def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no network call should happen for a pinned package")

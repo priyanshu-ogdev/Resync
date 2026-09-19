@@ -108,9 +108,7 @@ async def _connected_session(repo_root: Path) -> AsyncIterator[Any]:
 
 @pytest.fixture
 def pinned_repo(tmp_path: Path) -> Path:
-    (tmp_path / "resync.toml").write_text(
-        '[[pin]]\npackage = "legacy-pkg"\nmax_version = "1.0.0"\nreason = "frozen"\n'
-    )
+    (tmp_path / "resync.toml").write_text('[[pin]]\npackage = "legacy-pkg"\nmax_version = "1.0.0"\nreason = "frozen"\n')
     return tmp_path
 
 

@@ -95,8 +95,8 @@ def resolve(
     from rich.console import Console
     from rich.table import Table
 
-    from resync.resolve.resolver import ResolverError, ResolverUnavailableError
-    from resync.resolve.resolver import resolve as run_resolve
+    from resync.adapters.python.resolver import ResolverError, ResolverUnavailableError
+    from resync.adapters.python.resolver import resolve as run_resolve
     from resync.verification.provenance import ProvenanceOutcome, check_provenance
 
     console = Console()
@@ -473,14 +473,11 @@ def mcp_config_command(
     if client == "custom":
         if command_style not in ("separate", "array", "nested_object"):
             console.print(
-                f"[red]Unknown --command-style {command_style!r}.[/red] Expected separate, array, or "
-                "nested_object."
+                f"[red]Unknown --command-style {command_style!r}.[/red] Expected separate, array, or nested_object."
             )
             raise _typer.Exit(code=2)
         validated_style: CommandStyle = command_style  # type: ignore[assignment]  # membership just checked above
-        console.print(
-            format_custom(root_key=root_key, command_style=validated_style, type_value=type_value, name=name)
-        )
+        console.print(format_custom(root_key=root_key, command_style=validated_style, type_value=type_value, name=name))
         console.print(
             "\n[yellow]Paste the snippet above into your agent's own MCP config file, under the key shown "
             "— this module doesn't know that file's location for an unregistered client.[/yellow]"

@@ -156,8 +156,7 @@ def _run_via_docker_gvisor(func: Callable[[], T], config: SandboxConfig) -> T:
             # tests/unit/test_sandbox.py promise never happens. Caught here and normalized to the same
             # documented SandboxUnavailableError as the missing-cloudpickle case above.
             raise SandboxUnavailableError(
-                "the Docker+gVisor fallback needs the `docker` CLI on PATH, and it isn't available here "
-                f"({exc})"
+                f"the Docker+gVisor fallback needs the `docker` CLI on PATH, and it isn't available here ({exc})"
             ) from exc
         if proc.returncode != 0:
             raise SandboxUnavailableError(
