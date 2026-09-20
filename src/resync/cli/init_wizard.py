@@ -111,6 +111,7 @@ def run_init_wizard(repo_root: Path, console: Console, *, non_interactive: bool 
         pin=pins,
     )
 
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     with config_path.open("wb") as f:
         tomli_w.dump(config.model_dump(mode="json"), f)
 

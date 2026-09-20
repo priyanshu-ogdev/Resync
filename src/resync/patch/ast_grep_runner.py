@@ -95,7 +95,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import date
 from pathlib import Path
@@ -127,13 +129,35 @@ def _ast_grep_language_name(language: str) -> str:
     return _LANGUAGE_NAMES.get(language.lower(), language.capitalize())
 
 
+# Resolve the ast-grep binary path once at module load, so every subprocess call uses a concrete path
+# rather than relying purely on the caller's PATH at runtime. The canonical install for this project
+# is `pip install ast-grep-cli` (AGENTS.md), which places the binary alongside the running Python
+# interpreter in the venv's bin/ directory — but callers don't always activate the venv first
+# (CI, devcontainers, and IDE-spawned subprocesses all regularly have a sys.executable inside a venv
+# while PATH points elsewhere). Resolution order:
+#   1. `shutil.which("ast-grep")` — respects the caller's PATH (works when venv is activated or when
+#      ast-grep is installed globally, e.g. via Homebrew or cargo install).
+#   2. The bin/ directory of the running Python interpreter — the venv-sibling location that
+#      `pip install ast-grep-cli` always uses, regardless of whether the venv is "activated".
+# Falling back to the bare string "ast-grep" as a last resort preserves the old behavior for any
+# exotic install layout not covered above, while making sure the common cases work without activation.
+_AST_GREP_BINARY: str = (
+    shutil.which("ast-grep")
+    or str(Path(sys.executable).parent / "ast-grep")
+    or "ast-grep"  # last-resort fallback — will raise FileNotFoundError at subprocess.run time
+)
+
+
 class AstGrepError(RuntimeError):
     """Raised only for genuine ast-grep failures (missing binary, invalid pattern) — never for "zero
     matches", which is exit code 1 and a legitimate, common outcome, not an error."""
 
 
 def _run_subprocess(cmd: list[str]) -> str:
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # Replace the bare "ast-grep" sentinel at position 0 with the resolved binary path so every
+    # call goes through the same resolution logic above, not a bare PATH lookup.
+    resolved_cmd = [_AST_GREP_BINARY if c == "ast-grep" else c for c in cmd]
+    result = subprocess.run(resolved_cmd, capture_output=True, text=True)
     if result.returncode not in (0, 1):
         raise AstGrepError(f"ast-grep failed (exit {result.returncode}): {result.stderr}")
     return result.stdout

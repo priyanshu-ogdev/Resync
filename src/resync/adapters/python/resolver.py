@@ -35,7 +35,9 @@ the exit-code-2 case's already-clean signal.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
+import sys
 import tempfile
 import tomllib
 from dataclasses import dataclass
@@ -45,6 +47,17 @@ from resync.config.loader import load as load_config
 
 _UV_NOT_FOUND_EXIT_CODE = 1
 _UV_NETWORK_EXIT_CODE = 2
+
+# Resolve the uv binary path once at module load — same strategy as ast_grep_runner._AST_GREP_BINARY:
+# `uv` is installed alongside the running Python interpreter's venv bin/ directory when installed via
+# `uv sync` or `pip install`, but that directory isn't always on the caller's PATH (CI, devcontainers,
+# IDE-spawned subprocesses). shutil.which checks PATH first (activated venv / global install), then
+# falls back to the venv-sibling location (`sys.executable/../uv`).
+_UV_BINARY: str = (
+    shutil.which("uv")
+    or str(Path(sys.executable).parent / "uv")
+    or "uv"  # last-resort fallback — FileNotFoundError at subprocess.run time with the current message
+)
 
 # Vocabulary confirmed in uv's real stderr (this module's own verification pass) for the exit-code-1 case
 # that is actually a registry-reachability problem, not a genuine "no such package" result — see module
@@ -109,7 +122,7 @@ def resolve(requirements: list[str], repo_root: Path, *, timeout_seconds: float 
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir) / "pylock.resync.toml"  # must start with "pylock." and end ".toml" — see above
-        cmd = ["uv", "pip", "compile", "-", "--format", "pylock.toml", "-o", str(out_path)]
+        cmd = [_UV_BINARY, "pip", "compile", "-", "--format", "pylock.toml", "-o", str(out_path)]
 
         constraints_text = _pin_constraints_file(repo_root)
         constraints_path: Path | None = None
