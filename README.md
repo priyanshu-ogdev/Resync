@@ -114,19 +114,19 @@ sequenceDiagram
 Resync provides standalone native installers that provision Astral `uv`, standalone Python 3.12 (if needed), the native `ast-grep` binary, pre-warms quantized ONNX embeddings, seeds the knowledge store, and links your active AI editors:
 
 #### Windows (Native C Executable)
-Run from PowerShell or Command Prompt (or double-click [`scripts/install.exe`](scripts/install.exe)):
+Run from PowerShell or Command Prompt (or double-click [`installer/install.exe`](installer/install.exe)):
 ```cmd
-.\scripts\install.exe
+.\installer\install.exe
 ```
 *(Runs with zero execution-policy friction; automatically scaffolds `.agents/`, `.cursor/`, `.vscode/`, `.zed/`, and `.mcp.json`).*
 
 #### Linux & macOS (POSIX Shell)
 ```bash
 # One-liner:
-curl -fsSL https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/install.sh | bash
 
 # Or from cloned repository:
-./scripts/install.sh
+./installer/install.sh
 ```
 
 #### Manual Developer Setup
@@ -391,7 +391,7 @@ uv run ruff format --check .
 uv run mypy src/
 
 # Run installation verification script
-uv run python scripts/verify_install.py
+uv run python tools/verify_install.py
 ```
 
 - **382 Passed Tests** (276 unit tests, 106 non-network integration tests, 100% pass rate).
@@ -414,7 +414,7 @@ Resync maintains a comprehensive, consolidated 8-document architecture:
 - **[`docs/verification-report.md`](docs/verification-report.md)** — Empirical verification report across Android/Kotlin (`goprivate`) and polyglot AI assistant (`HacktT`).
 - **[`docs/implementation-plan.md`](docs/implementation-plan.md)** — Phased engineering roadmap history across Phases 0–9.
 - **[`AGENTS.md`](AGENTS.md)** — Instructions and behavioral guidelines for AI coding agents contributing to Resync.
-- **[`scripts/README.md`](scripts/README.md)** — Detailed guide to the native Windows C installer, POSIX installer, and environment verification.
+- **[`tools/README.md`](tools/README.md)** — Detailed guide to internal developer utilities, diagnostics, and build tools.
 
 ---
 

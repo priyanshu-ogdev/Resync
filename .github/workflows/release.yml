@@ -33,7 +33,7 @@ jobs:
       name: pypi
       url: https://pypi.org/p/resync-mcp  # confirm the final distribution name before first release — docs/tech-stack.md
     permissions:
-      id-token: write  # required for PyPI Trusted Publishing (OIDC) — no stored token, see docs/release-plan.md
+      id-token: write  # required for PyPI Trusted Publishing (OIDC) — no stored token, see docs/architecture.md#8-release--publishing-strategy
     steps:
       - uses: actions/download-artifact@v4
         with:

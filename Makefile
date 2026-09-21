@@ -21,7 +21,7 @@ typecheck:
 	uv run mypy src/
 
 verify:
-	uv run python scripts/verify_install.py
+	uv run python tools/verify_install.py
 
 run-server:
 	uv run resync serve --transport stdio
@@ -30,7 +30,7 @@ run-server-http:
 	uv run resync serve --transport http --port 8787
 
 installer:
-	gcc -O2 -static -Wall scripts/installer.c -o scripts/install.exe
+	gcc -O2 -static -Wall tools/installer.c -o installer/install.exe
 
 clean:
-	uv run python scripts/clean.py
+	uv run python tools/clean.py

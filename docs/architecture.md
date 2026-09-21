@@ -200,7 +200,7 @@ Testing Resync requires rigorous standards because the system's entire premise i
 - **Verification Gate on Release**: Resync's own supply-chain provenance gate and `resync doctor` diagnostics must pass cleanly on clean-room runner environments before publication.
 - **Distribution Packages**:
   - Python Package (`resync-mcp` on PyPI).
-  - Standalone Single-Binary Installers: POSIX shell (`scripts/install.sh`) and Windows native C executable (`scripts/install.exe`).
+  - Standalone Single-Binary Installers: POSIX shell (`installer/install.sh`) and Windows native C executable (`installer/install.exe`).
 
 ---
 

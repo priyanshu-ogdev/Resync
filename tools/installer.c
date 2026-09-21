@@ -10,7 +10,7 @@
  * 6. System health check and diagnostics verification (resync doctor)
  *
  * Build:
- *   gcc -O2 -static -Wall scripts/installer.c -o scripts/install.exe
+ *   gcc -O2 -static -Wall tools/installer.c -o installer/install.exe
  */
 
 #include <stdio.h>
@@ -574,12 +574,12 @@ int main(int argc, char *argv[]) {
     run_command_visible(doctor_cmd);
 
     /* Run verify_install.py if present */
-    if (file_exists("scripts\\verify_install.py")) {
+    if (file_exists("tools\\verify_install.py")) {
         char verify_cmd[MAX_PATH];
         if (file_exists(".\\.venv\\Scripts\\python.exe")) {
-            snprintf(verify_cmd, sizeof(verify_cmd), ".\\.venv\\Scripts\\python.exe scripts\\verify_install.py");
+            snprintf(verify_cmd, sizeof(verify_cmd), ".\\.venv\\Scripts\\python.exe tools\\verify_install.py");
         } else {
-            snprintf(verify_cmd, sizeof(verify_cmd), "python scripts\\verify_install.py");
+            snprintf(verify_cmd, sizeof(verify_cmd), "python tools\\verify_install.py");
         }
         run_command_visible(verify_cmd);
     }

@@ -16,8 +16,8 @@ from real testing that aren't otherwise visible in the code's current shape.
 
 ```bash
 # Automated one-way setup (background provisions uv, Python 3.12, ast-grep, and Resync):
-./scripts/install.sh --local --dev                                          # Linux / macOS
-.\scripts\install.exe --local --dev                                         # Windows
+./installer/install.sh --local --dev                                        # Linux / macOS
+.\installer\install.exe --local --dev                                       # Windows
 
 # Or manual:
 uv sync --extra server --extra cli --group dev --group verify

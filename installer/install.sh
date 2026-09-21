@@ -3,9 +3,9 @@
 # Automates background provisioning of uv, Python 3.12, ast-grep, embedding models, and Resync MCP server.
 #
 # Usage:
-#   ./scripts/install.sh [--local] [--dev] [--client <name>] [--yes]
+#   ./installer/install.sh [--local] [--dev] [--client <name>] [--yes]
 #   Remote one-liner:
-#   curl -fsSL https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/install.sh | bash
 
 set -euo pipefail
 
@@ -66,7 +66,7 @@ print_completion_card() {
 show_help() {
     print_header
     cat <<EOF
-Usage: ./scripts/install.sh [OPTIONS]
+Usage: ./installer/install.sh [OPTIONS]
 
 Options:
   --local, -l        Install into local repository virtual environment (.venv)
@@ -78,10 +78,10 @@ Options:
   -h, --help         Show this help message
 
 Examples:
-  ./scripts/install.sh                     # Interactive single-launch install & full MCP setup
-  ./scripts/install.sh -y                  # Unattended setup (CI / automated)
-  ./scripts/install.sh --local --dev       # Local dev setup with test suites
-  ./scripts/install.sh --client cursor     # Install and configure for Cursor
+  ./installer/install.sh                     # Interactive single-launch install & full MCP setup
+  ./installer/install.sh -y                  # Unattended setup (CI / automated)
+  ./installer/install.sh --local --dev       # Local dev setup with test suites
+  ./installer/install.sh --client cursor     # Install and configure for Cursor
 
 EOF
     exit 0
@@ -377,11 +377,11 @@ stage 5 5 "Running Comprehensive System Diagnostics (Doctor)"
 
 run_resync doctor || true
 
-if [ -f "scripts/verify_install.py" ]; then
+if [ -f "tools/verify_install.py" ]; then
     if [ -x "$REPO_ROOT/.venv/bin/python" ]; then
-        "$REPO_ROOT/.venv/bin/python" scripts/verify_install.py || true
+        "$REPO_ROOT/.venv/bin/python" tools/verify_install.py || true
     else
-        python3 scripts/verify_install.py || true
+        python3 tools/verify_install.py || true
     fi
 fi
 

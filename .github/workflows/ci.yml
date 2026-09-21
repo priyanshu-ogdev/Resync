@@ -48,7 +48,7 @@ jobs:
         run: uv run pytest tests/unit --cov=resync --cov-report=xml
       - name: Integration tests
         run: uv run pytest tests/integration
-      # Coverage floors per docs/testing-strategy.md: 100% on verification/ and config/knowledge schemas,
+      # Coverage floors per docs/architecture.md#7-testing-strategy--quality-pyramid: 100% on verification/ and config/knowledge schemas,
       # 80% floor everywhere else. Enforced here once the corresponding modules have real implementations
       # to measure — see docs/implementation-plan.md for phase sequencing.
 
@@ -64,5 +64,5 @@ jobs:
       - run: uv sync --extra server --extra cli --group dev
       - name: Flagship demo scenario (peft/bitsandbytes fixture)
         run: uv run pytest tests/integration/test_flagship_demo.py -v
-        # See docs/release-plan.md — this is the same script rehearsed for the actual demo,
+        # See docs/architecture.md#8-release--publishing-strategy — this is the same script rehearsed for the actual demo,
         # automated so it can't silently regress between commits.
