@@ -9,5 +9,5 @@
   scenario in `docs/architecture.md#flagship-demo`.
 
 Any change to `verification/` should come with a Hypothesis-based property test, not just a fixed-input unit
-test — see `docs/adr/0002-differential-equivalence-verification.md` for why a single happy-path test isn't
+test — see `docs/architecture.md#decision-2-differential-equivalence-over-test-passes` for why a single happy-path test isn't
 sufficient evidence for this specific layer.

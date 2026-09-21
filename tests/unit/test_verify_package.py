@@ -75,14 +75,57 @@ def test_advisory_list_is_truncated_with_a_count_for_more_than_five(tmp_path: Pa
 
 def test_unsupported_ecosystem_reports_no_check_performed_rather_than_a_false_ok(tmp_path: Path) -> None:
     """A silent OK for an ecosystem this project doesn't actually check yet would be a falsely-reassuring
-    result — must say plainly that nothing was checked, not claim confirmed-clean."""
+    result — must say plainly that nothing was checked, not claim confirmed-clean. Fixed: the outcome is
+    now CHECK_UNAVAILABLE (not OK), which is the correct fail-closed value for 'no verdict reached.'"""
 
     def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no network call should happen for an unsupported ecosystem")
 
-    result = verify_package("some-npm-package", "npm", tmp_path, client=_client(handler))
-    assert result.outcome == VerificationOutcome.OK
+    result = verify_package("some-package", "unknown-ecosystem", tmp_path, client=_client(handler))
+    assert result.outcome == VerificationOutcome.CHECK_UNAVAILABLE
     assert "not yet checked" in result.detail
+
+
+def test_osv_supported_ecosystem_clean_returns_ok(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "api.osv.dev" in str(request.url)
+        return httpx.Response(200, json={"vulns": []})
+
+    result = verify_package("serde", "crates", tmp_path, client=_client(handler))
+    assert result.outcome == VerificationOutcome.OK
+    assert "no known advisories in OSV.dev" in result.detail
+
+
+def test_osv_supported_ecosystem_flagged_returns_advisory(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "api.osv.dev" in str(request.url)
+        return httpx.Response(200, json={"vulns": [{"id": "RUSTSEC-2020-0071"}]})
+
+    result = verify_package("smallvec", "crates", tmp_path, client=_client(handler))
+    assert result.outcome == VerificationOutcome.ADVISORY_FLAGGED
+    assert "RUSTSEC-2020-0071" in result.detail
+
+
+def test_npm_package_clean_returns_ok(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "registry.npmjs.org/react/latest" in str(request.url):
+            return httpx.Response(200, json={"version": "19.0.0"})
+        assert "api.osv.dev" in str(request.url)
+        return httpx.Response(200, json={"vulns": []})
+
+    result = verify_package("react", "npm", tmp_path, client=_client(handler))
+    assert result.outcome == VerificationOutcome.OK
+    assert "react exists on npm" in result.detail
+    assert "19.0.0" in result.detail
+
+
+def test_npm_package_not_found(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    result = verify_package("nonexistent-npm-pkg", "npm", tmp_path, client=_client(handler))
+    assert result.outcome == VerificationOutcome.PACKAGE_NOT_FOUND
+    assert "not found on npm registry" in result.detail
 
 
 def test_client_is_closed_when_not_injected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

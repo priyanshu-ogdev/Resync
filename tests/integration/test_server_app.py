@@ -35,7 +35,13 @@ def test_both_tools_are_registered_with_the_documented_names(pinned_repo: Path) 
     server = build_server(pinned_repo)
     tools = asyncio.run(server.list_tools())
     names = {t.name for t in tools}
-    assert names == {"verify_package", "check_symbol_exists", "verify_patch_equivalence"}
+    assert names == {
+        "verify_package",
+        "check_symbol_exists",
+        "verify_patch_equivalence",
+        "explain_change",
+        "get_compatibility_report",
+    }
 
 
 def test_verify_package_reachable_through_the_real_mcp_call_path(pinned_repo: Path) -> None:

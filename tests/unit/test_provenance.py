@@ -113,3 +113,25 @@ def test_no_distribution_files_is_no_attestation() -> None:
 
     result = check_provenance("pkg", "1.0.0", client=_client(handler))
     assert result.outcome == ProvenanceOutcome.NO_ATTESTATION
+
+
+def test_missing_pypi_attestations_reports_check_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    import builtins
+
+    real_import = builtins.__import__
+
+    def mock_import(name: str, *args: object, **kwargs: object) -> object:
+        if "pypi_attestations" in name or "sigstore" in name:
+            raise ImportError(f"No module named {name}")
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/pypi/" in str(request.url):
+            return httpx.Response(200, json=_release_json("pkg-1.0.0-py3-none-any.whl"))
+        return httpx.Response(200, json={"attestation_bundles": []})
+
+    result = check_provenance("pkg", "1.0.0", client=_client(handler))
+    assert result.outcome == ProvenanceOutcome.CHECK_UNAVAILABLE
+    assert "not installed" in result.files[0].detail

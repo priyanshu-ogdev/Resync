@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from resync.knowledge.schema import KnowledgeRecord, RecordSource, RuleType
 from resync.patch.taxonomy import PatchStrategy
-from resync.verification.tier import VerificationTier, select_tier
+from resync.verification.tier import (
+    VerificationTier,
+    evaluate_record_verification,
+    resolve_callable,
+    select_tier,
+)
 
 
 def _rename_record(parameter: str = "no_cuda", new_parameter: str = "use_cpu") -> KnowledgeRecord:
@@ -94,3 +99,23 @@ def test_old_callable_with_uninspectable_signature_does_not_crash_and_falls_back
     record = _rename_record()
     tier = select_tier(record, PatchStrategy.MECHANICAL, old_callable=len)  # builtin, often uninspectable-ish
     assert tier in (VerificationTier.COMPILE_CHECK, VerificationTier.DEPRECATION_WINDOW_DIFFERENTIAL)
+
+
+def test_resolve_callable_resolves_standard_function() -> None:
+    import json
+
+    fn = resolve_callable("json.loads")
+    assert fn is json.loads
+
+
+def test_resolve_callable_returns_none_for_nonexistent() -> None:
+    assert resolve_callable("nonexistent_package_xyz.foo") is None
+    assert resolve_callable(None) is None
+
+
+def test_evaluate_record_verification_returns_tier_and_result() -> None:
+    record = _rename_record()
+    tier, diff_res = evaluate_record_verification(record, PatchStrategy.MECHANICAL)
+    assert tier == VerificationTier.COMPILE_CHECK
+    assert diff_res.passed is True
+    assert diff_res.tier == VerificationTier.COMPILE_CHECK

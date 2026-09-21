@@ -1,6 +1,6 @@
 # `config/`
 
-`resync.toml` parsing, validation, and writing. See `docs/adr/0005-config-and-policy-persistence.md`.
+`resync.toml` parsing, validation, and writing. See `docs/architecture.md#decision-5-resynctoml-as-the-single-source-of-truth`.
 
 - `schema.py` — the pydantic models: `ProjectConfig`, `ScheduleConfig`, `ConfidenceConfig`, `Pin`,
   `Exception_`, `Policy`, and the top-level `ResyncConfig` with `is_pinned_or_frozen` — the single check every

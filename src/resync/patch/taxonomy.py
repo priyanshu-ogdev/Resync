@@ -1,6 +1,6 @@
 """Given a KnowledgeRecord, decide how it should be fixed: mechanical, semantic, or escalate.
 
-This is more than record.rule_type.is_mechanical alone (docs/adr/0003-deterministic-first-patching.md):
+This is more than record.rule_type.is_mechanical alone (docs/architecture.md#decision-3-deterministic-first-patching):
 resync.toml's confidence thresholds (config/schema.py's ConfidenceConfig) matter too — a RENAME with
 suspiciously low confidence shouldn't skip verification just because rename-in-general is usually safe.
 

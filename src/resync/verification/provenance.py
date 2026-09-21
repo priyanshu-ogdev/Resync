@@ -41,7 +41,7 @@ convention exists to prevent.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from pydantic import BaseModel
@@ -113,8 +113,15 @@ def _check_one_file(
     # project's tests for those two paths should not need the `server` extra installed just to exercise
     # logic that never actually touches it — found necessary directly, not assumed, when those tests failed
     # to collect with the import at the top of the function instead.
-    from pypi_attestations import AttestationError, Distribution, Provenance, VerificationError
-    from sigstore.errors import Error as SigstoreError
+    try:
+        from pypi_attestations import AttestationError, Distribution, Provenance, VerificationError
+        from sigstore.errors import Error as SigstoreError
+    except ImportError as exc:
+        return FileProvenanceResult(
+            filename=filename,
+            outcome=ProvenanceOutcome.CHECK_UNAVAILABLE,
+            detail=f"pypi-attestations or sigstore is not installed (requires the 'server' extra): {exc}",
+        )
 
     try:
         response.raise_for_status()
@@ -236,13 +243,13 @@ def check_provenance(package: str, version: str, *, client: httpx.Client | None 
 
         import concurrent.futures
 
-        def _check_wrapper(f: dict) -> FileProvenanceResult:
+        def _check_wrapper(f: dict[str, Any]) -> FileProvenanceResult:
             return _check_one_file(http_client, package, version, f["filename"], f["digests"]["sha256"])
 
         urls = release_data.get("urls", [])
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             files = list(executor.map(_check_wrapper, urls))
-            
+
         if not files:
             files = [
                 FileProvenanceResult(

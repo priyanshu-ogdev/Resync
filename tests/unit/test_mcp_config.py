@@ -16,11 +16,16 @@ from resync.cli.mcp_config import (
     build_entry,
     config_path_for,
     describe_registry,
+    detect_agent_config_targets,
+    ensure_gitignore_unignores,
     format_custom,
     format_for_display,
     generate_entry,
+    infer_client_spec_from_dict,
     merge_config,
+    scaffold_project_mcp_templates,
     write_config,
+    write_target_config,
 )
 
 
@@ -154,11 +159,11 @@ def test_config_path_for_cursor_vscode_zed_use_their_own_subdirectories(tmp_path
 def test_claude_desktop_config_path_is_os_specific(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("platform.system", lambda: "Darwin")
     macos_path = config_path_for("claude-desktop", Path("/tmp"))
-    assert macos_path is not None and "Library/Application Support/Claude" in str(macos_path)
+    assert macos_path is not None and "Library/Application Support/Claude" in macos_path.as_posix()
 
     monkeypatch.setattr("platform.system", lambda: "Linux")
     linux_path = config_path_for("claude-desktop", Path("/tmp"))
-    assert linux_path is not None and ".config/Claude" in str(linux_path)
+    assert linux_path is not None and ".config/Claude" in linux_path.as_posix()
 
 
 def test_windsurf_config_path_is_global_not_project_scoped(tmp_path: Path) -> None:
@@ -279,3 +284,100 @@ def test_describe_registry_includes_verification_dates_and_notes() -> None:
     for row in rows:
         assert row["last_verified"]
         assert row["id"] in CLIENT_IDS
+
+
+class TestAdaptiveSchemaInferenceAndTargets:
+    """Exercises infer_client_spec_from_dict, detect_agent_config_targets, and write_target_config."""
+
+    def test_infer_separate_command_style(self) -> None:
+        existing = {"mcpServers": {"github": {"command": "npx", "args": ["-y", "gh"]}}}
+        inferred = infer_client_spec_from_dict(existing)
+        assert inferred is not None
+        assert inferred.root_key == "mcpServers"
+        assert inferred.command_style == "separate"
+        assert inferred.requires_type_field is False
+        assert inferred.env_key == "env"
+
+    def test_infer_array_command_style_and_environment_key(self) -> None:
+        existing = {
+            "mcp": {
+                "server1": {
+                    "type": "local",
+                    "command": ["uvx", "server"],
+                    "environment": {"K": "V"},
+                }
+            }
+        }
+        inferred = infer_client_spec_from_dict(existing)
+        assert inferred is not None
+        assert inferred.root_key == "mcp"
+        assert inferred.command_style == "array"
+        assert inferred.requires_type_field is True
+        assert inferred.type_value == "local"
+        assert inferred.env_key == "environment"
+
+    def test_infer_nested_object_command_style(self) -> None:
+        existing = {"context_servers": {"srv": {"command": {"path": "node", "args": ["app.js"]}}}}
+        inferred = infer_client_spec_from_dict(existing)
+        assert inferred is not None
+        assert inferred.root_key == "context_servers"
+        assert inferred.command_style == "nested_object"
+
+    def test_infer_returns_none_for_empty_or_unrecognized_dict(self) -> None:
+        assert infer_client_spec_from_dict({}) is None
+        assert infer_client_spec_from_dict({"unrelated": {}}) is None
+
+    def test_detect_agent_config_targets_discovers_workspace_roots(self, tmp_path: Path) -> None:
+        targets = detect_agent_config_targets(tmp_path)
+        ids = [t.agent_id for t in targets]
+        assert "antigravity-workspace" in ids
+        assert "claude-code" in ids
+
+    def test_write_target_config_preserves_existing_entries_and_applies_inference(self, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "mcp_config.json"
+        cfg_file.write_text(
+            json.dumps({"mcpServers": {"existing_svc": {"command": "cmd", "args": ["arg"]}}}),
+            encoding="utf-8",
+        )
+        target = detect_agent_config_targets(tmp_path)[0]  # Take first target and redirect path
+        object.__setattr__(target, "path", cfg_file)
+
+        out_path = write_target_config(target, name="resync")
+        assert out_path == cfg_file
+        loaded = json.loads(cfg_file.read_text(encoding="utf-8"))
+        assert "existing_svc" in loaded["mcpServers"]
+        assert "resync" in loaded["mcpServers"]
+        assert loaded["mcpServers"]["resync"]["command"] == "resync"
+
+    def test_detect_all_project_targets(self, tmp_path: Path) -> None:
+        targets = detect_agent_config_targets(tmp_path, all_project_targets=True)
+        target_ids = {t.agent_id for t in targets}
+        assert {"claude-code", "cursor", "vscode", "antigravity-workspace", "zed"} <= target_ids
+
+    def test_ensure_gitignore_unignores(self, tmp_path: Path) -> None:
+        gitignore = tmp_path / ".gitignore"
+        gitignore.write_text(".vscode/\n.cursor/\nnode_modules/\n", encoding="utf-8")
+        targets = detect_agent_config_targets(tmp_path, all_project_targets=True)
+        unignores = ensure_gitignore_unignores(tmp_path, targets)
+        assert "!.vscode/mcp.json" in unignores
+        assert "!.cursor/mcp.json" in unignores
+
+        # Second run is idempotent
+        second = ensure_gitignore_unignores(tmp_path, targets)
+        assert second == []
+
+        content = gitignore.read_text(encoding="utf-8")
+        assert "!.vscode/mcp.json" in content
+        assert "!.cursor/mcp.json" in content
+
+    def test_scaffold_project_mcp_templates(self, tmp_path: Path) -> None:
+        (tmp_path / ".gitignore").write_text(".vscode/\n", encoding="utf-8")
+        targets, unignores = scaffold_project_mcp_templates(tmp_path, name="resync")
+
+        assert len(targets) >= 5
+        assert (tmp_path / ".mcp.json").exists()
+        assert (tmp_path / ".cursor" / "mcp.json").exists()
+        assert (tmp_path / ".vscode" / "mcp.json").exists()
+        assert (tmp_path / ".agents" / "mcp_config.json").exists()
+        assert (tmp_path / ".zed" / "settings.json").exists()
+        assert "!.vscode/mcp.json" in unignores

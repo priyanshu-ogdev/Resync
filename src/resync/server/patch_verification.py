@@ -42,10 +42,12 @@ REMOVED_NO_REPLACEMENT — no generic structural signature to check against) rep
 from __future__ import annotations
 
 import ast
+import difflib
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from resync.config.loader import load as load_config
 from resync.knowledge import store
@@ -73,6 +75,199 @@ class PatchVerificationOutcome(StrEnum):
 class PatchVerificationResult(BaseModel):
     outcome: PatchVerificationOutcome
     detail: str
+    explanation: str | None = None
+    options: list[dict[str, str]] = Field(default_factory=list)
+    trust_breakdown: dict[str, Any] | None = None
+    diff_preview: str | None = None
+    markdown_display: str | None = None
+
+
+def _make_patch_diff(old_source: str, new_source: str) -> str:
+    diff_lines = list(
+        difflib.unified_diff(
+            old_source.splitlines(keepends=True),
+            new_source.splitlines(keepends=True),
+            fromfile="before.py",
+            tofile="after.py",
+        )
+    )
+    return (
+        "".join(diff_lines) if diff_lines else "--- before.py\n+++ after.py\n@@ -0,0 +0,0 @@\n (no textual difference)"
+    )
+
+
+def _enrich_patch_result(
+    result: PatchVerificationResult,
+    symbol: str,
+    old_source: str,
+    new_source: str,
+    pinned_version: str,
+) -> PatchVerificationResult:
+    diff = _make_patch_diff(old_source, new_source)
+
+    explanation: str
+    options: list[dict[str, str]] = []
+    trust: dict[str, Any]
+
+    if result.outcome == PatchVerificationOutcome.LIKELY_CORRECT:
+        explanation = (
+            f"The proposed patch for '{symbol}' successfully reflects the structural AST identifiers "
+            f"expected for target version {pinned_version}. Syntax is valid and identifiers match known change records."
+        )
+        options.append(
+            {
+                "action": "Sync",
+                "title": "Apply verified patch",
+                "description": "Write the verified patch to the repository source files.",
+                "command": "resync sync --apply",
+            }
+        )
+        options.append(
+            {
+                "action": "Shift",
+                "title": "Request manual review",
+                "description": "Inspect side-by-side diff in the Resync dashboard before accepting.",
+                "command": "resync dashboard",
+            }
+        )
+        options.append(
+            {
+                "action": "Pin",
+                "title": "Pin symbol",
+                "description": f"Pin '{symbol}' in resync.toml to freeze current call sites.",
+                "command": f"resync pin {symbol}",
+            }
+        )
+        trust = {
+            "overall": 0.95,
+            "rule_match": 1.0,
+            "test_suite": 1.0,
+            "differential_equivalence": 0.90,
+            "source_citation": 1.0,
+            "verdict": "Likely Correct",
+        }
+    elif result.outcome == PatchVerificationOutcome.INVALID_SYNTAX:
+        explanation = f"The proposed rewrite fails Python syntax parsing (`ast.parse`). Syntax error: {result.detail}"
+        options.append(
+            {
+                "action": "Shift",
+                "title": "Re-draft rewrite",
+                "description": "Prompt the agent or local model to correct the Python syntax error.",
+                "command": f"resync explain {symbol}",
+            }
+        )
+        trust = {
+            "overall": 0.0,
+            "rule_match": 0.0,
+            "test_suite": 0.0,
+            "differential_equivalence": 0.0,
+            "source_citation": 1.0,
+            "verdict": "Syntax Error",
+        }
+    elif result.outcome == PatchVerificationOutcome.DOES_NOT_MATCH_KNOWN_CHANGE:
+        explanation = (
+            f"The proposed rewrite is valid Python, but does not contain the expected identifiers "
+            f"required to satisfy the known breaking change for '{symbol}' at version {pinned_version}."
+        )
+        options.append(
+            {
+                "action": "Shift",
+                "title": "Re-draft with exact symbol name",
+                "description": "Ask the agent to consult the recommended replacement in Resync records.",
+                "command": f"resync explain {symbol}",
+            }
+        )
+        options.append(
+            {
+                "action": "Pin",
+                "title": "Pin symbol",
+                "description": f"Pin '{symbol}' in resync.toml to suppress automated rewriting.",
+                "command": f"resync pin {symbol}",
+            }
+        )
+        trust = {
+            "overall": 0.20,
+            "rule_match": 1.0,
+            "test_suite": 0.0,
+            "differential_equivalence": 0.0,
+            "source_citation": 1.0,
+            "verdict": "Patch Mismatch",
+        }
+    elif result.outcome == PatchVerificationOutcome.PINNED:
+        explanation = f"Symbol '{symbol}' is pinned or frozen in resync.toml. Verification skipped by repo policy."
+        options.append(
+            {
+                "action": "Sync",
+                "title": "Unpin symbol",
+                "description": f"Unpin '{symbol}' in resync.toml to re-enable automated patch verification.",
+                "command": f"resync unpin {symbol}",
+            }
+        )
+        trust = {
+            "overall": 1.0,
+            "rule_match": 1.0,
+            "test_suite": 1.0,
+            "differential_equivalence": 1.0,
+            "source_citation": 1.0,
+            "verdict": "Pinned Policy",
+        }
+    else:  # NO_KNOWN_CHANGE or NOT_STATICALLY_CHECKABLE
+        explanation = result.detail
+        options.append(
+            {
+                "action": "Shift",
+                "title": "Manual review required",
+                "description": "This rule type or symbol requires dynamic / test-suite evaluation.",
+                "command": f"resync explain {symbol}",
+            }
+        )
+        trust = {
+            "overall": 0.50,
+            "rule_match": 0.8,
+            "test_suite": 0.5,
+            "differential_equivalence": 0.5,
+            "source_citation": 0.5,
+            "verdict": "Manual Review",
+        }
+
+    badge_map = {
+        PatchVerificationOutcome.LIKELY_CORRECT: "🟢 `LIKELY CORRECT`",
+        PatchVerificationOutcome.INVALID_SYNTAX: "🔴 `SYNTAX ERROR`",
+        PatchVerificationOutcome.DOES_NOT_MATCH_KNOWN_CHANGE: "🔴 `MISMATCH`",
+        PatchVerificationOutcome.NO_KNOWN_CHANGE: "⚪ `NO KNOWN CHANGE`",
+        PatchVerificationOutcome.NOT_STATICALLY_CHECKABLE: "🟡 `NOT STATICALLY CHECKABLE`",
+        PatchVerificationOutcome.PINNED: "📌 `PINNED`",
+    }
+    badge = badge_map.get(result.outcome, f"`{result.outcome.value.upper()}`")
+
+    md_lines = [
+        f"### {badge} Patch Equivalence: {symbol}",
+        f"> **Detail**: {result.detail}\n",
+        "```diff",
+        diff,
+        "```\n",
+        f"**Explainability**: {explanation}\n",
+        f"**Trust Score**: `{trust['overall']:.2f} / 1.00` ({trust['verdict']})",
+        f"- Rule Match: `{trust['rule_match']:.2f}` | Test Suite: `{trust['test_suite']:.2f}` | "
+        f"Differential: `{trust['differential_equivalence']:.2f}` | Citations: `{trust['source_citation']:.2f}`\n",
+    ]
+    if options:
+        md_lines.append("**Remediation Options**:")
+        for opt in options:
+            cmd = f" — `{opt['command']}`" if opt.get("command") else ""
+            md_lines.append(f"- **[{opt['action']}]** **{opt['title']}**: {opt['description']}{cmd}")
+
+    md_display = "\n".join(md_lines)
+
+    return result.model_copy(
+        update={
+            "explanation": explanation,
+            "options": options,
+            "trust_breakdown": trust,
+            "diff_preview": diff,
+            "markdown_display": md_display,
+        }
+    )
 
 
 def _referenced_identifiers(source: str) -> tuple[set[str], set[str]]:
@@ -132,22 +327,25 @@ def verify_patch_equivalence(
     check against resync's own knowledge store rather than the agent's self-assessment.
 
     Checks `resync.toml` pins first and short-circuits, matching `verify_package`/`check_symbol_exists`'s
-    existing guardrail-first pattern (`docs/adr/0005`) — a pinned symbol's patches aren't evaluated at all.
+    existing guardrail-first pattern (`docs/architecture.md#decision-5`) — a pinned symbol's
+    patches aren't evaluated at all.
     """
     config = load_config(repo_root)
     if config.is_pinned_or_frozen(fully_qualified_symbol):
-        return PatchVerificationResult(
+        res = PatchVerificationResult(
             outcome=PatchVerificationOutcome.PINNED,
             detail=f"{fully_qualified_symbol} is pinned or frozen in resync.toml — not evaluated.",
         )
+        return _enrich_patch_result(res, fully_qualified_symbol, old_source, new_source, pinned_version)
 
     try:
         ast.parse(new_source)
     except SyntaxError as exc:
-        return PatchVerificationResult(
+        res = PatchVerificationResult(
             outcome=PatchVerificationOutcome.INVALID_SYNTAX,
             detail=f"new_source is not valid Python: {exc}",
         )
+        return _enrich_patch_result(res, fully_qualified_symbol, old_source, new_source, pinned_version)
 
     db = store.connect(store.default_db_path(repo_root))
     table = store.get_or_create_table(db)
@@ -155,31 +353,35 @@ def verify_patch_equivalence(
     applicable = [r for r in candidates if _version_already_changed(pinned_version, r.to_version) is True]
 
     if not applicable:
-        return PatchVerificationResult(
+        res = PatchVerificationResult(
             outcome=PatchVerificationOutcome.NO_KNOWN_CHANGE,
             detail=f"No known change applies to {fully_qualified_symbol} at {pinned_version} — nothing in "
             "resync's knowledge store to check this patch against.",
         )
+        return _enrich_patch_result(res, fully_qualified_symbol, old_source, new_source, pinned_version)
 
     checkable_results = [(r, _check_record_reflected(r, old_source, new_source)) for r in applicable]
     if all(result is None for _, result in checkable_results):
         rule_types = ", ".join(sorted({r.rule_type.value for r, _ in checkable_results}))
-        return PatchVerificationResult(
+        res = PatchVerificationResult(
             outcome=PatchVerificationOutcome.NOT_STATICALLY_CHECKABLE,
             detail=f"{len(applicable)} known change(s) apply ({rule_types}), but none are rule types this "
             "tool's static-only checks can verify yet — see this tool's module docstring for scope.",
         )
+        return _enrich_patch_result(res, fully_qualified_symbol, old_source, new_source, pinned_version)
 
     if any(result is True for _, result in checkable_results):
-        return PatchVerificationResult(
+        res = PatchVerificationResult(
             outcome=PatchVerificationOutcome.LIKELY_CORRECT,
             detail="new_source structurally reflects the known change's expected identifiers. This is a "
             "static check, not execution-based proof — see this tool's module docstring for what it does "
             "and doesn't confirm.",
         )
+        return _enrich_patch_result(res, fully_qualified_symbol, old_source, new_source, pinned_version)
 
-    return PatchVerificationResult(
+    res = PatchVerificationResult(
         outcome=PatchVerificationOutcome.DOES_NOT_MATCH_KNOWN_CHANGE,
         detail="new_source parses, but does not structurally reflect any applicable known change's expected "
         "identifiers — the patch likely doesn't apply the correct fix.",
     )
+    return _enrich_patch_result(res, fully_qualified_symbol, old_source, new_source, pinned_version)

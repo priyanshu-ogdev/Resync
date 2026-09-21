@@ -17,10 +17,11 @@ from __future__ import annotations
 import ast
 import importlib.metadata
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from resync.adapters.registry import get_adapter
+from resync.adapters.base import find_manifest_files
+from resync.adapters.registry import get_adapters
 from resync.server.tools import (
     VerificationOutcome,
     VerificationResult,
@@ -49,24 +50,73 @@ _EXCLUDED_DIR_NAMES = {
 _NAME_STOP_CHARS = set("[]<>=!~; @")
 
 
+@dataclass
+class DiscoveredDependencies:
+    names: list[str]
+    ecosystem: str
+    items: list[tuple[str, str]] = field(default_factory=list)  # (package_name, ecosystem)
 
-def discover_dependencies(repo_root: Path) -> list[str]:
-    """Package names from the repository's manifest file (e.g., pyproject.toml, package.json, Cargo.toml).
-    Returns `[]`, not an error, when there's no manifest file or no dependencies are found."""
-    adapter = get_adapter(repo_root)
-    dependencies = adapter.parse_manifest(repo_root)
-    return [dep.name for dep in dependencies]
+
+def discover_dependencies(repo_root: Path) -> DiscoveredDependencies:
+    """Package names and ecosystem from the repository's manifest files (e.g., pyproject.toml, package.json,
+    Cargo.toml). In polyglot repositories, parses all present manifests.
+    The `ecosystem` field carries the primary adapter's ecosystem string ('pypi', 'crates', 'npm'), while
+    `items` carries tuples of (package_name, ecosystem) for precise per-package verification."""
+    adapters = get_adapters(repo_root)
+    all_names: list[str] = []
+    items: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for adapter in adapters:
+        dependencies = adapter.parse_manifest(repo_root)
+        for dep in dependencies:
+            if (dep.name, adapter.ecosystem) not in seen:
+                seen.add((dep.name, adapter.ecosystem))
+                items.append((dep.name, adapter.ecosystem))
+                all_names.append(dep.name)
+
+    primary_eco = adapters[0].ecosystem if adapters else "pypi"
+    return DiscoveredDependencies(
+        names=all_names,
+        ecosystem=primary_eco,
+        items=items,
+    )
+
+
+def discover_code_files(
+    repo_root: Path,
+    extensions: list[str] | tuple[str, ...] | None = None,
+) -> list[Path]:
+    """Every source file under `repo_root` matching `extensions` (or all files if None),
+    skipping directories no scan should ever touch (VCS metadata, virtualenvs, caches, Resync's
+    own `.resync/` state directory)."""
+    valid_exts = (
+        {ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in extensions}
+        if extensions is not None
+        else None
+    )
+    files: list[Path] = []
+    try:
+        for path in repo_root.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                rel = path.relative_to(repo_root)
+            except ValueError:
+                continue
+            if any(part in _EXCLUDED_DIR_NAMES for part in rel.parts[:-1]):
+                continue
+            if valid_exts is None or path.suffix.lower() in valid_exts:
+                files.append(path)
+    except OSError:
+        pass
+    return sorted(files)
 
 
 def discover_python_files(repo_root: Path) -> list[Path]:
     """Every `.py` file under `repo_root`, skipping directories no scan should ever touch (VCS metadata,
     virtualenvs, caches, Resync's own `.resync/` state directory)."""
-    files: list[Path] = []
-    for path in repo_root.rglob("*.py"):
-        if any(part in _EXCLUDED_DIR_NAMES for part in path.relative_to(repo_root).parts):
-            continue
-        files.append(path)
-    return files
+    return discover_code_files(repo_root, extensions=[".py"])
 
 
 def resolve_pinned_version(package: str, repo_root: Path) -> str | None:
@@ -90,8 +140,41 @@ def resolve_pinned_version(package: str, repo_root: Path) -> str | None:
                 if version:
                     return str(version)
 
+    # Check for exact pin in requirements.txt (root or subdirectories)
+    req_files: list[Path] = find_manifest_files(
+        repo_root, ["requirements.txt", "requirements-dev.txt"], list(_EXCLUDED_DIR_NAMES)
+    )
+
+    for req_file in req_files:
+        try:
+            raw_bytes = req_file.read_bytes()
+            text = (
+                raw_bytes.decode("utf-16", errors="ignore")
+                if b"\x00" in raw_bytes
+                else raw_bytes.decode("utf-8", errors="ignore")
+            )
+            for line in text.splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "==" in line:
+                    req_name_part, version_part = line.split("==", 1)
+                    clean_name = req_name_part.split("[")[0].strip().lower()
+                    if clean_name == package.lower():
+                        clean_version = version_part.split(";")[0].strip()
+                        if clean_version:
+                            return clean_version
+        except OSError:
+            continue
+
     try:
-        return importlib.metadata.version(package)
+        # importlib.metadata.version() is case-sensitive on some platforms (notably not on Windows/macOS
+        # case-insensitive filesystems, but on Linux it is). Normalize to lowercase first — PyPI package
+        # names are case-insensitive and importlib.metadata normalizes them in metadata files to their
+        # canonical form, which is usually lowercase. If the lowercased lookup fails, fall back to the
+        # original casing as a last resort.
+        try:
+            return importlib.metadata.version(package.lower())
+        except importlib.metadata.PackageNotFoundError:
+            return importlib.metadata.version(package)
     except importlib.metadata.PackageNotFoundError:
         return None
 
@@ -169,14 +252,16 @@ class SymbolFinding:
 def run_dependency_checks(repo_root: Path) -> list[DependencyFinding]:
     """Runs `verify_package` for every dependency `discover_dependencies` finds. One `httpx.Client` is
     shared across all calls (see `verify_package`'s own `client` parameter) so a repo with many dependencies
-    doesn't open a new connection per package."""
+    doesn't open a new connection per package. The correct ecosystem is read per dependency from the
+    discovered items, supporting polyglot repositories seamlessly."""
     import httpx
 
-    packages = discover_dependencies(repo_root)
+    discovered = discover_dependencies(repo_root)
     findings: list[DependencyFinding] = []
     with httpx.Client(timeout=10.0) as client:
-        for package in packages:
-            result = verify_package(package, "pypi", repo_root, client=client)
+        items = discovered.items or [(pkg, discovered.ecosystem) for pkg in discovered.names]
+        for package, eco in items:
+            result = verify_package(package, eco, repo_root, client=client)
             findings.append(DependencyFinding(package=package, result=result))
     return findings
 
@@ -209,3 +294,46 @@ def is_actionable(outcome: VerificationOutcome) -> bool:
     silently dropping it would look identical to a clean OK, which is exactly the false reassurance this
     project's whole design exists to avoid — see server/tools.py's verify_package docstring."""
     return outcome not in (VerificationOutcome.OK, VerificationOutcome.PINNED)
+
+
+@dataclass
+class ProvenanceFinding:
+    package: str
+    version: str
+    outcome: str
+    detail: str
+
+
+def run_provenance_checks(repo_root: Path) -> list[ProvenanceFinding]:
+    """Run the Sigstore/SLSA provenance gate (verification/provenance.py) against every package whose
+    resolved version can be found in uv.lock. Previously this was only called from `resync resolve`;
+    adding it here makes `resync check` cover provenance alongside existence and advisory checks.
+
+    Only runs when a uv.lock exists — provenance verification requires a specific resolved version, not
+    just a declared dependency range. Returns [] (not an error) when uv.lock is absent.
+    """
+    from resync.verification.provenance import check_provenance
+
+    uv_lock_path = repo_root / "uv.lock"
+    if not uv_lock_path.exists():
+        return []
+
+    with uv_lock_path.open("rb") as fh:
+        lock_data = tomllib.load(fh)
+
+    findings: list[ProvenanceFinding] = []
+    for entry in lock_data.get("package", []):
+        name = entry.get("name", "")
+        version = entry.get("version", "")
+        if not name or not version:
+            continue
+        prov = check_provenance(name, version)
+        findings.append(
+            ProvenanceFinding(
+                package=name,
+                version=version,
+                outcome=prov.outcome.value,
+                detail=prov.files[0].detail if prov.files else "",
+            )
+        )
+    return findings

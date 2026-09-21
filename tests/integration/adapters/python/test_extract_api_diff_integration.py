@@ -10,7 +10,7 @@ Skips (importorskip), rather than mocking griffe, when griffe isn't installed â€
 griffe's API the way we assume it works, not that it actually does.
 
 Real network required (real `pip download` against real PyPI) â€” marked `@pytest.mark.network`, per
-docs/testing-strategy.md's convention for tests that need it.
+docs/architecture.md#7-testing-strategy--quality-pyramid's convention for tests that need it.
 """
 
 from __future__ import annotations

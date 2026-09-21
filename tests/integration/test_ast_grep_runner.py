@@ -1,6 +1,6 @@
 """Integration tests: these run the real ast-grep binary against real fixture files, per
-docs/testing-strategy.md's principle that mocking away the tools this project's central claim depends on
-would defeat the point of testing at all.
+docs/architecture.md#7-testing-strategy--quality-pyramid: mocking away the tools this project's
+central claim depends on would defeat the point of testing at all.
 
 Every one of the three findings documented in ast_grep_runner.py's module docstring was caught by exactly
 this kind of test failing first — these are that debugging session turned into permanent regression coverage,

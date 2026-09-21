@@ -1,0 +1,14 @@
+{
+  "context_servers": {
+    "resync": {
+      "command": {
+        "path": "resync",
+        "args": [
+          "serve",
+          "--transport",
+          "stdio"
+        ]
+      }
+    }
+  }
+}

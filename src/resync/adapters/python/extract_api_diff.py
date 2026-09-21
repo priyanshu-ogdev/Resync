@@ -233,10 +233,14 @@ def extract(
     package: str,
     old_ref: str,
     new_ref: str,
-    from_version: str,
-    to_version: str,
+    from_version: str | None = None,
+    to_version: str | None = None,
     ecosystem: str = "pypi",
 ) -> list[KnowledgeRecord]:
+    if from_version is None:
+        from_version = old_ref
+    if to_version is None:
+        to_version = new_ref
     """Diff `package` between `old_ref` and `new_ref` (PyPI version specifiers, e.g. `"0.10.0"`) and return
     one KnowledgeRecord per detected change.
 

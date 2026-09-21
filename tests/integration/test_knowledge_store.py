@@ -1,4 +1,5 @@
-"""Real integration tests against an actual LanceDB instance — per docs/testing-strategy.md, mocking the
+"""Real integration tests against an actual LanceDB instance — per
+docs/architecture.md#7-testing-strategy--quality-pyramid, mocking the
 vector store away would defeat the point of testing this module. Embeddings are monkeypatched (see
 tests/unit/test_store.py for why: the real model host isn't reachable in every environment), but the table
 creation, listing, insert, filter, and delete paths below are all real LanceDB calls.

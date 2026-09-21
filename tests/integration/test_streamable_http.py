@@ -119,7 +119,13 @@ async def test_list_tools_over_a_real_http_request_response_cycle(pinned_repo: P
     was originally authored."""
     async with _connected_session(pinned_repo) as session:
         tools = await session.list_tools()
-    assert {t.name for t in tools.tools} == {"verify_package", "check_symbol_exists", "verify_patch_equivalence"}
+    assert {t.name for t in tools.tools} == {
+        "verify_package",
+        "check_symbol_exists",
+        "verify_patch_equivalence",
+        "explain_change",
+        "get_compatibility_report",
+    }
 
 
 @pytest.mark.anyio

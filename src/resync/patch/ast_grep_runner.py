@@ -122,6 +122,14 @@ _LANGUAGE_NAMES = {
     "tsx": "Tsx",
     "rust": "Rust",
     "go": "Go",
+    "kotlin": "Kotlin",
+    "java": "Java",
+    "c": "C",
+    "cpp": "Cpp",
+    "c++": "Cpp",
+    "c_cpp": "Cpp",
+    "csharp": "CSharp",
+    "cs": "CSharp",
 }
 
 
@@ -129,23 +137,34 @@ def _ast_grep_language_name(language: str) -> str:
     return _LANGUAGE_NAMES.get(language.lower(), language.capitalize())
 
 
-# Resolve the ast-grep binary path once at module load, so every subprocess call uses a concrete path
-# rather than relying purely on the caller's PATH at runtime. The canonical install for this project
-# is `pip install ast-grep-cli` (AGENTS.md), which places the binary alongside the running Python
-# interpreter in the venv's bin/ directory — but callers don't always activate the venv first
-# (CI, devcontainers, and IDE-spawned subprocesses all regularly have a sys.executable inside a venv
-# while PATH points elsewhere). Resolution order:
-#   1. `shutil.which("ast-grep")` — respects the caller's PATH (works when venv is activated or when
-#      ast-grep is installed globally, e.g. via Homebrew or cargo install).
-#   2. The bin/ directory of the running Python interpreter — the venv-sibling location that
-#      `pip install ast-grep-cli` always uses, regardless of whether the venv is "activated".
-# Falling back to the bare string "ast-grep" as a last resort preserves the old behavior for any
-# exotic install layout not covered above, while making sure the common cases work without activation.
-_AST_GREP_BINARY: str = (
-    shutil.which("ast-grep")
-    or str(Path(sys.executable).parent / "ast-grep")
-    or "ast-grep"  # last-resort fallback — will raise FileNotFoundError at subprocess.run time
-)
+def _find_binary(name: str) -> str:
+    """Resolve a binary path cleanly across Windows and Linux, respecting PATH, activated venvs,
+    unactivated venvs, and conda layouts."""
+    # 1. System PATH
+    found = shutil.which(name)
+    if found:
+        return found
+    # 2. Sibling of running Python interpreter (e.g. .venv/bin on Linux, .venv/Scripts on Windows)
+    parent = Path(sys.executable).parent
+    found = shutil.which(name, path=str(parent))
+    if found:
+        return found
+    # 3. Sibling Scripts directory (e.g. conda root on Windows)
+    scripts = parent / "Scripts"
+    if scripts.is_dir():
+        found = shutil.which(name, path=str(scripts))
+        if found:
+            return found
+    # 4. Standard sys.prefix locations
+    for candidate in (Path(sys.prefix) / "bin", Path(sys.prefix) / "Scripts"):
+        if candidate.is_dir():
+            found = shutil.which(name, path=str(candidate))
+            if found:
+                return found
+    return name
+
+
+_AST_GREP_BINARY: str = _find_binary("ast-grep")
 
 
 class AstGrepError(RuntimeError):
@@ -164,45 +183,76 @@ def _run_subprocess(cmd: list[str]) -> str:
 
 
 def _keyword_argument_rule_yaml(parameter: str, new_parameter: str, language: str) -> str:
-    """The idiomatic YAML-rule replacement for the placeholder-wrapper hack — see module docstring."""
-    rule = {
-        "id": f"resync-rename-{parameter}",
-        "language": _ast_grep_language_name(language),
-        "rule": {
-            "kind": "keyword_argument",
-            "all": [
-                {"has": {"field": "name", "pattern": parameter}},
-                {"has": {"field": "value", "pattern": "$VAL"}},
-            ],
-        },
-        "fix": f"{new_parameter}=$VAL",
-    }
+    """The idiomatic YAML-rule replacement for the placeholder-wrapper hack — language-aware."""
+    lang_lower = language.lower()
+    lang_name = _ast_grep_language_name(language)
+    if lang_lower in ("python", "py"):
+        rule = {
+            "id": f"resync-rename-{parameter}",
+            "language": lang_name,
+            "rule": {
+                "kind": "keyword_argument",
+                "all": [
+                    {"has": {"field": "name", "pattern": parameter}},
+                    {"has": {"field": "value", "pattern": "$VAL"}},
+                ],
+            },
+            "fix": f"{new_parameter}=$VAL",
+        }
+    elif lang_lower in ("typescript", "javascript", "tsx", "ts", "js"):
+        rule = {
+            "id": f"resync-rename-{parameter}",
+            "language": lang_name,
+            "rule": {
+                "kind": "pair",
+                "all": [
+                    {"has": {"field": "key", "pattern": parameter}},
+                    {"has": {"field": "value", "pattern": "$VAL"}},
+                ],
+            },
+            "fix": f"{new_parameter}: $VAL",
+        }
+    else:
+        rule = {
+            "id": f"resync-rename-{parameter}",
+            "language": lang_name,
+            "rule": {
+                "pattern": f"{parameter}=$VAL",
+            },
+            "fix": f"{new_parameter}=$VAL",
+        }
     return yaml.safe_dump(rule)
 
 
-def _import_name_rule_yaml(old_name: str, new_name: str, language: str) -> str:
-    """Targets only the specific imported identifier inside a `from $MOD import ...` statement, not the
-    whole statement.
-
-    Real bug this replaces: `from $MOD import {old_name}` / `from $MOD import {new_name}` as a plain
-    pattern/rewrite pair matches the *entire* import line, including every other comma-separated name on it
-    — so `from pkg import old_name, other_thing` silently lost `other_thing` on rewrite. Confirmed by testing
-    against exactly that case. The fix, confirmed the same way: target the innermost `identifier` node,
-    scoped via nested `inside` to only the ones that are part of a `dotted_name` that is itself part of an
-    `import_from_statement` — this matches and replaces just that one name, leaving commas and sibling names
-    untouched since they're outside the matched span entirely.
-    """
-    rule = {
-        "id": f"resync-rename-import-{old_name}",
-        "language": _ast_grep_language_name(language),
-        "rule": {
-            "kind": "identifier",
-            "pattern": old_name,
-            "inside": {"kind": "dotted_name", "inside": {"kind": "import_from_statement"}},
-        },
-        "fix": new_name,
-    }
-    return yaml.safe_dump(rule)
+def _import_name_rule_yaml(old_name: str, new_name: str, language: str) -> str | None:
+    """Targets only the specific imported identifier inside an import statement."""
+    lang_lower = language.lower()
+    lang_name = _ast_grep_language_name(language)
+    if lang_lower in ("python", "py"):
+        rule = {
+            "id": f"resync-rename-import-{old_name}",
+            "language": lang_name,
+            "rule": {
+                "kind": "identifier",
+                "pattern": old_name,
+                "inside": {"kind": "dotted_name", "inside": {"kind": "import_from_statement"}},
+            },
+            "fix": new_name,
+        }
+        return yaml.safe_dump(rule)
+    if lang_lower in ("typescript", "javascript", "tsx", "ts", "js"):
+        rule = {
+            "id": f"resync-rename-import-{old_name}",
+            "language": lang_name,
+            "rule": {
+                "kind": "identifier",
+                "pattern": old_name,
+                "inside": {"kind": "import_specifier"},
+            },
+            "fix": new_name,
+        }
+        return yaml.safe_dump(rule)
+    return None
 
 
 def _reorder_pattern_and_rewrite(record: KnowledgeRecord) -> tuple[str, str]:
@@ -255,15 +305,39 @@ def _plan(record: KnowledgeRecord, language: str) -> list[dict[str, Any]]:
     new_name = (record.new_symbol or "").rsplit(".", 1)[-1]
     if not new_name:
         raise AstGrepError(f"Cannot generate a mechanical rewrite with no new_symbol: {record}")
-    return [
+    steps: list[dict[str, Any]] = [
         {"pattern": f"{old_name}($$$ARGS)", "rewrite": f"{new_name}($$$ARGS)"},
-        {"rule_yaml": _import_name_rule_yaml(old_name, new_name, language)},
     ]
+
+    lang_lower = language.lower()
+
+    # If the symbol has a qualifier or package prefix (e.g. Helper.oldMethod or oldpkg.OldDo or crate::foo):
+    if "." in record.old_symbol and record.new_symbol and "." in record.new_symbol:
+        steps.append({"pattern": f"{record.old_symbol}($$$ARGS)", "rewrite": f"{record.new_symbol}($$$ARGS)"})
+        # For object-oriented methods (e.g. Java/JS/TS/Python): $OBJ.old_name(...) -> $OBJ.new_name(...)
+        steps.append({"pattern": f"$OBJ.{old_name}($$$ARGS)", "rewrite": f"$OBJ.{new_name}($$$ARGS)"})
+        # For Go zero-arg and multi-arg calls:
+        if lang_lower in ("go", "golang"):
+            steps.append({"pattern": f"{record.old_symbol}()", "rewrite": f"{record.new_symbol}()"})
+            steps.append({"pattern": f"$PKG.{old_name}()", "rewrite": f"$PKG.{new_name}()"})
+            steps.append({"pattern": f"{record.old_symbol}($A)", "rewrite": f"{record.new_symbol}($A)"})
+            steps.append({"pattern": f"{record.old_symbol}($A, $B)", "rewrite": f"{record.new_symbol}($A, $B)"})
+            steps.append({"pattern": f"{record.old_symbol}($A, $B, $C)", "rewrite": f"{record.new_symbol}($A, $B, $C)"})
+            steps.append({"pattern": f"$PKG.{old_name}($A)", "rewrite": f"$PKG.{new_name}($A)"})
+            steps.append({"pattern": f"$PKG.{old_name}($A, $B)", "rewrite": f"$PKG.{new_name}($A, $B)"})
+
+    if "::" in record.old_symbol and record.new_symbol and "::" in record.new_symbol:
+        steps.append({"pattern": f"{record.old_symbol}($$$ARGS)", "rewrite": f"{record.new_symbol}($$$ARGS)"})
+
+    import_rule = _import_name_rule_yaml(old_name, new_name, language)
+    if import_rule:
+        steps.append({"rule_yaml": import_rule})
+    return steps
 
 
 def _run_step(step: dict[str, Any], target_path: Path, language: str, write: bool) -> list[dict[str, Any]]:
     if "rule_yaml" in step:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False, encoding="utf-8") as f:
             f.write(step["rule_yaml"])
             rule_path = f.name
         try:
@@ -285,28 +359,57 @@ def _run_step(step: dict[str, Any], target_path: Path, language: str, write: boo
 
 
 def _package_is_imported(target_path: Path, package: str, language: str) -> bool:
-    """Safety pre-check: does the target file even import the record's package?
+    """Safety pre-check: does the target file even import the record's package? Multi-language support."""
+    try:
+        content = target_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
 
-    Real risk this addresses (finding 10, see module docstring): every mechanical pattern here matches by
-    *name* — a function name, a keyword-argument name — not by verified origin. A file that happens to
-    define or call something with the same name, but has nothing to do with the package being tracked, would
-    otherwise be a false-positive match. Confirmed with a real fixture: a file containing an unrelated local
-    `def old_helper` shadowing an import of the same name produced a match for a call that Python's own
-    scoping rules resolve to the *local* function, not the imported one — renaming it would have been wrong.
+    pkg_token = package.split(":")[-1] if ":" in package else package
+    if package not in content and pkg_token not in content:
+        return False
 
-    This check is a partial mitigation, not a complete one. It correctly filters out the common case (a file
-    that doesn't touch the package at all), but it cannot detect the harder residual case above — a file
-    that legitimately imports the package *and* separately shadows the same name locally. That residual risk
-    is real and left as a known limitation; the differential-equivalence layer (Phase 3,
-    docs/adr/0002-differential-equivalence-verification.md) is the intended backstop for it, since a wrong
-    rename in a shadowing scenario would produce a `NameError` or behavioral divergence that layer is built
-    to catch, even though this syntactic layer cannot.
-    """
-    for query in (f"import {package}", f"from {package} import $$$X"):
-        cmd = ["ast-grep", "run", "-p", query, "-l", language, "--json", str(target_path)]
-        stdout = _run_subprocess(cmd)
-        if json.loads(stdout) if stdout.strip() else []:
+    lang_lower = language.lower()
+    queries: list[str] = []
+    if lang_lower in ("python", "py"):
+        queries = [f"import {pkg_token}", f"from {pkg_token} import $$$X"]
+    elif lang_lower in ("typescript", "javascript", "tsx", "ts", "js"):
+        queries = [f'import $$$X from "{pkg_token}"', f"import $$$X from '{pkg_token}'", f'require("{pkg_token}")']
+    elif lang_lower in ("rust", "rs"):
+        queries = [f"use {pkg_token}::$$$X", f"extern crate {pkg_token}"]
+    elif lang_lower in ("go", "golang"):
+        queries = [f'import "{pkg_token}"']
+    elif lang_lower in ("java", "kotlin", "kt"):
+        queries = [f"import {pkg_token}.$$$X", f"import {pkg_token}.*"]
+    elif lang_lower in ("c", "cpp", "c++", "c_cpp"):
+        queries = [
+            f"#include <{pkg_token}.h>",
+            f'#include "{pkg_token}.h"',
+            f"#include <{pkg_token}/$$$X>",
+            f'#include "{pkg_token}/$$$X"',
+        ]
+
+    for query in queries:
+        try:
+            cmd = ["ast-grep", "run", "-p", query, "-l", language, "--json", str(target_path)]
+            stdout = _run_subprocess(cmd)
+            if json.loads(stdout) if stdout.strip() else []:
+                return True
+        except Exception:
+            continue
+
+    # Fallback heuristic: check if the package name appears on an import/include line
+    import_keywords = ("import ", "use ", "from ", "#include", "require(")
+    for line in content.splitlines():
+        line_s = line.strip()
+        if (pkg_token in line_s or package in line_s) and any(
+            line_s.startswith(k) or k in line_s for k in import_keywords
+        ):
             return True
+        # In Rust, crate name can be used directly without a use statement: e.g. `my_crate::func()`
+        if lang_lower in ("rust", "rs") and f"{pkg_token}::" in line_s:
+            return True
+
     return False
 
 
@@ -349,7 +452,13 @@ def apply(
     if record.rule_type not in (RuleType.RENAME, RuleType.REORDER):
         raise AstGrepError(f"ast_grep_runner only handles mechanical rule types, got {record.rule_type}")
 
-    file_key = str(target_path.relative_to(repo_root)) if repo_root is not None else str(target_path)
+    if repo_root is not None:
+        try:
+            file_key = target_path.relative_to(repo_root).as_posix()
+        except ValueError:
+            file_key = target_path.as_posix()
+    else:
+        file_key = target_path.as_posix()
     config = config_loader.load(repo_root) if repo_root is not None else None
 
     if record.rule_type == RuleType.REORDER and config is not None:

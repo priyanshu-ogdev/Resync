@@ -3,9 +3,12 @@ record with no actual target (no changed new_symbol, no parameter/new_parameter 
 silently, with the breakage only surfacing several layers downstream inside ast_grep_runner.py. See
 schema.py's docstring."""
 
+from datetime import date
+
 import pytest
 from pydantic import ValidationError
 
+from resync.config.schema import AppliedFix, ResyncConfig
 from resync.knowledge.schema import KnowledgeRecord, RecordSource, RuleType
 
 
@@ -83,4 +86,43 @@ def test_reorder_with_valid_permutation_is_accepted() -> None:
             old_param_order=["a", "b"],
             new_param_order=["b", "a"],
         )
+    )
+
+
+def test_already_applied_normalizes_path_separators_across_os() -> None:
+    config = ResyncConfig(
+        applied=[
+            AppliedFix(
+                file="src/resync/patch/ast_grep_runner.py",
+                symbol="pkg.func",
+                change_type="reorder",
+                fingerprint="abc12345",
+                applied_at=date.today(),
+            )
+        ]
+    )
+    # Query with Windows backslashes matches POSIX stored path
+    assert config.already_applied(
+        "src\\resync\\patch\\ast_grep_runner.py",
+        "pkg.func",
+        "reorder",
+        "abc12345",
+    )
+    # Stored with Windows backslashes matches POSIX query
+    config_win = ResyncConfig(
+        applied=[
+            AppliedFix(
+                file="src\\resync\\patch\\ast_grep_runner.py",
+                symbol="pkg.func",
+                change_type="reorder",
+                fingerprint="abc12345",
+                applied_at=date.today(),
+            )
+        ]
+    )
+    assert config_win.already_applied(
+        "src/resync/patch/ast_grep_runner.py",
+        "pkg.func",
+        "reorder",
+        "abc12345",
     )

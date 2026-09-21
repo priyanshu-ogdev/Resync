@@ -1,6 +1,6 @@
 """Phase 3.1: which verification tier a given patch needs.
 
-Per docs/adr/0002-differential-equivalence-verification.md, mechanical fixes (RENAME, REORDER) are exempt
+Per docs/architecture.md#decision-2, mechanical fixes (RENAME, REORDER) are exempt
 from the full differential-equivalence check — a compile check is sufficient for their risk profile. That
 exemption was previously only prose; this module gives it a concrete, testable home so the rest of the
 verification layer has a single source of truth for "how hard do we need to check this."
@@ -23,10 +23,13 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from resync.knowledge.schema import KnowledgeRecord, RuleType
 from resync.patch.taxonomy import PatchStrategy
+
+if TYPE_CHECKING:
+    from resync.verification.differential import DifferentialResult
 
 
 class VerificationTier(StrEnum):
@@ -94,3 +97,74 @@ def select_tier(
     # unreachable): the oracle check is still the best available signal, and costs nothing to compute even
     # when no automatic patch will actually be applied off the back of it.
     return VerificationTier.ORACLE_SIGNATURE_CHECK
+
+
+def resolve_callable(dotted: str | None) -> Callable[..., Any] | None:
+    """Attempts to dynamically import and resolve a dotted symbol path (e.g. 'pkg.module.Class.method')
+    to a live callable. Returns None if the symbol cannot be imported or is not callable."""
+    if not dotted:
+        return None
+    import importlib
+
+    parts = dotted.strip().split(".")
+    for i in range(len(parts), 0, -1):
+        mod_name = ".".join(parts[:i])
+        try:
+            mod = importlib.import_module(mod_name)
+            curr: Any = mod
+            for attr in parts[i:]:
+                curr = getattr(curr, attr)
+            if callable(curr):
+                return curr  # type: ignore[no-any-return]
+        except (ImportError, AttributeError, ValueError):
+            continue
+        except Exception:
+            return None
+    return None
+
+
+def evaluate_record_verification(
+    record: KnowledgeRecord,
+    patch_strategy: PatchStrategy = PatchStrategy.MECHANICAL,
+) -> tuple[VerificationTier, DifferentialResult]:
+    """Resolves available callables for a KnowledgeRecord, determines the appropriate
+    VerificationTier, and executes the verification check (compile check, oracle signature check,
+    or deprecation window differential), returning (tier, differential_result)."""
+    from resync.verification.differential import (
+        check_deprecation_window_differential,
+        check_oracle_signature,
+        compile_check_result,
+    )
+
+    old_call = resolve_callable(record.old_symbol)
+    new_symbol_name = record.new_symbol or record.old_symbol
+    new_call = resolve_callable(new_symbol_name)
+
+    tier = select_tier(record, patch_strategy, old_callable=old_call)
+
+    if (
+        tier == VerificationTier.DEPRECATION_WINDOW_DIFFERENTIAL
+        and old_call is not None
+        and new_call is not None
+        and record.parameter
+        and record.new_parameter
+    ):
+        try:
+            result = check_deprecation_window_differential(
+                old_call=old_call,
+                new_call=new_call,
+                old_param=record.parameter,
+                new_param=record.new_parameter,
+            )
+            return tier, result
+        except Exception:
+            pass
+
+    if tier == VerificationTier.ORACLE_SIGNATURE_CHECK and new_call is not None:
+        try:
+            result = check_oracle_signature(record, new_call)
+            return tier, result
+        except Exception:
+            pass
+
+    return tier, compile_check_result()

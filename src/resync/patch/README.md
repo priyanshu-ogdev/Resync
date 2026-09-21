@@ -1,6 +1,6 @@
 # `patch/`
 
-The deterministic-first patch layer. See `docs/adr/0003-deterministic-first-patching.md` for why mechanical
+The deterministic-first patch layer. See `docs/architecture.md#decision-3-deterministic-first-patching` for why mechanical
 changes never touch the local model.
 
 - `taxonomy.py` — `classify()`, deciding `PatchStrategy.MECHANICAL` / `SEMANTIC` / `ESCALATE` for a

@@ -3,7 +3,8 @@
 API verified against current LanceDB docs (lancedb.pydantic.LanceModel/Vector, the explicit
 `.search(query_type="hybrid").vector(...).text(...)` pattern for externally-computed embeddings, and
 RRFReranker confirmed as the library's own default hybrid reranker) rather than assumed from memory — see
-docs/research-foundations.md#1 for why hybrid + RRF is the retrieval foundation this project builds on.
+docs/architecture.md#5-research-foundations--citations
+for why hybrid + RRF is the retrieval foundation this project builds on.
 
 This file went through one review-and-fix pass after the initial implementation. Two real bugs were caught
 and fixed here, not just noted: (1) filter strings built via raw f-string interpolation of untrusted values
@@ -197,10 +198,10 @@ def upsert(table: lancedb.table.Table, records: list[KnowledgeRecord]) -> None:
 
 def hybrid_search(table: lancedb.table.Table, query: str, limit: int = 5) -> list[KnowledgeRecord]:
     """Dense + BM25 fused with Reciprocal Rank Fusion — LanceDB's default hybrid reranker, and the
-    foundation technique docs/research-foundations.md#1 identifies as the base every other retrieval
-    technique in this project sits on top of. Vector and text are passed explicitly (rather than relying on
-    a table-bound embedding function) since embeddings are computed externally via fastembed — this is
-    LanceDB's documented pattern for exactly that case, not a workaround."""
+    foundation technique docs/architecture.md#5-research-foundations--citations identifies as the base
+    every other retrieval technique in this project sits on top of. Vector and text are passed explicitly
+    (rather than relying on a table-bound embedding function) since embeddings are computed externally
+    via fastembed — this is LanceDB's documented pattern for exactly that case, not a workaround."""
     results = (
         table.search(query_type="hybrid")
         .vector(embed_query(query))

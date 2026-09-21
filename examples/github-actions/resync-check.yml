@@ -1,0 +1,32 @@
+name: Resync Compatibility Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  compatibility-check:
+    name: Fast Verification Sweep
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install Resync
+        run: |
+          uv tool install "resync-mcp[cli]" --with ast-grep-cli
+
+      - name: Run Fast Verification Sweep
+        run: |
+          resync check .

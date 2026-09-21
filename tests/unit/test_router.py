@@ -1,4 +1,6 @@
-"""Per docs/testing-strategy.md: table-driven, covering every branch, not just the obvious case."""
+"""Per docs/architecture.md#7-testing-strategy--quality-pyramid:
+table-driven, covering every branch, not just the obvious case.
+"""
 
 from resync.knowledge.router import RetrievalRoute, route
 
@@ -21,3 +23,8 @@ def test_single_word_is_not_treated_as_a_qualified_symbol() -> None:
 
 def test_whitespace_is_stripped_before_matching() -> None:
     assert route("  peft.PeftModel.from_pretrained  ") == RetrievalRoute.EXACT_SYMBOL_LOOKUP
+
+
+def test_leading_digit_non_symbol_routes_to_hybrid_search() -> None:
+    assert route("123.something") == RetrievalRoute.HYBRID_SEARCH
+    assert route("123.456.789") == RetrievalRoute.HYBRID_SEARCH

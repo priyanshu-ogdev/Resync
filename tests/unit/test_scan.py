@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from resync.cli.scan import (
+    discover_code_files,
     discover_dependencies,
     discover_python_files,
     extract_fully_qualified_symbols,
@@ -30,12 +31,13 @@ def test_discover_dependencies_reads_core_and_optional_groups(tmp_path: Path) ->
         'server = ["mcp>=2.0", "httpx>=0.27"]\n'
         'cli = ["rich>=13.0"]\n'
     )
-    names = discover_dependencies(tmp_path)
-    assert names == ["httpx", "mcp", "pydantic", "rich", "typer"]
+    discovered = discover_dependencies(tmp_path)
+    assert discovered.names == ["httpx", "mcp", "pydantic", "rich", "typer"]
+    assert discovered.ecosystem == "pypi"
 
 
 def test_discover_dependencies_returns_empty_without_pyproject(tmp_path: Path) -> None:
-    assert discover_dependencies(tmp_path) == []
+    assert discover_dependencies(tmp_path).names == []
 
 
 def test_discover_dependencies_handles_extras_and_url_requirements(tmp_path: Path) -> None:
@@ -45,8 +47,8 @@ def test_discover_dependencies_handles_extras_and_url_requirements(tmp_path: Pat
     (tmp_path / "pyproject.toml").write_text(
         '[project]\ndependencies = ["uvicorn[standard]>=0.30", "some-pkg @ https://example.com/pkg.whl"]\n'
     )
-    names = discover_dependencies(tmp_path)
-    assert names == ["some-pkg", "uvicorn"]
+    discovered = discover_dependencies(tmp_path)
+    assert discovered.names == ["some-pkg", "uvicorn"]
 
 
 def test_resolve_pinned_version_prefers_uv_lock_over_environment(tmp_path: Path) -> None:
@@ -73,6 +75,28 @@ def test_discover_python_files_skips_excluded_directories(tmp_path: Path) -> Non
 
     found = {p.name for p in discover_python_files(tmp_path)}
     assert found == {"real.py"}
+
+
+def test_discover_code_files_multi_extensions_and_pruning(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("x = 1\n")
+    (tmp_path / "index.ts").write_text("console.log('hi');\n")
+    (tmp_path / "Main.kt").write_text("fun main() {}\n")
+    (tmp_path / "main.rs").write_text("fn main() {}\n")
+    (tmp_path / "ignored.txt").write_text("hello\n")
+
+    # In excluded dir
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "git_app.py").write_text("x = 1\n")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "dep.ts").write_text("x = 1\n")
+
+    # Filter for .ts and .kt
+    ts_kt = {p.name for p in discover_code_files(tmp_path, extensions=[".ts", "kt"])}
+    assert ts_kt == {"index.ts", "Main.kt"}
+
+    # All files excluding pruned
+    all_files = {p.name for p in discover_code_files(tmp_path)}
+    assert all_files == {"app.py", "index.ts", "Main.kt", "main.rs", "ignored.txt"}
 
 
 def test_extract_fully_qualified_symbols_resolves_import_and_import_from(tmp_path: Path) -> None:
@@ -114,3 +138,20 @@ def test_is_actionable() -> None:
     assert is_actionable(VerificationOutcome.PACKAGE_NOT_FOUND) is True
     assert is_actionable(VerificationOutcome.ADVISORY_FLAGGED) is True
     assert is_actionable(VerificationOutcome.CHECK_UNAVAILABLE) is True
+
+
+def test_discover_dependencies_polyglot_repository(tmp_path: Path) -> None:
+    """Polyglot repositories (e.g. Node frontend + Python backend) must detect
+    and discover dependencies across both ecosystems simultaneously."""
+    (tmp_path / "package.json").write_text('{"dependencies": {"react": "^18.0.0", "next": "^14.0.0"}}')
+    (tmp_path / "requirements.txt").write_text("fastapi>=0.100.0\nuvicorn>=0.20.0\n")
+
+    discovered = discover_dependencies(tmp_path)
+    assert "react" in discovered.names
+    assert "next" in discovered.names
+    assert "fastapi" in discovered.names
+    assert "uvicorn" in discovered.names
+    assert ("react", "npm") in discovered.items
+    assert ("next", "npm") in discovered.items
+    assert ("fastapi", "pypi") in discovered.items
+    assert ("uvicorn", "pypi") in discovered.items

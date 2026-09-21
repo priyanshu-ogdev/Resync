@@ -1,8 +1,8 @@
 """The knowledge-record schema.
 
-Per docs/architecture.md#knowledge-layer and the Vul-RAG template it follows (docs/research-foundations.md#3),
-Resync never embeds raw prose chunks as its unit of retrieval. Every fact the system acts on is normalized
-into a KnowledgeRecord first.
+Per docs/architecture.md#knowledge-layer and the Vul-RAG template it follows
+(docs/architecture.md#5-research-foundations--citations), Resync never embeds raw prose chunks as its unit
+of retrieval. Every fact the system acts on is normalized into a KnowledgeRecord first.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ class RuleType(StrEnum):
 
     This is the single most load-bearing classification in the system: it determines whether a change can be
     applied mechanically (ast-grep, no model call) or requires the semantic path (local LLM draft +
-    differential-equivalence verification). See docs/adr/0003-deterministic-first-patching.md.
+    differential-equivalence verification). See docs/architecture.md#decision-3-deterministic-first-patching.
     """
 
     RENAME = "rename"
@@ -34,7 +34,7 @@ class RuleType(StrEnum):
         """Whether this change type can be applied by ast-grep alone, with no LLM call.
 
         Everything else requires the differential/property-based equivalence check before it counts as
-        verified — see docs/adr/0002-differential-equivalence-verification.md.
+        verified — see docs/architecture.md#decision-2-differential-equivalence-over-test-passes.
         """
         return self in (RuleType.RENAME, RuleType.REORDER)
 
@@ -51,8 +51,8 @@ class RecordSource(StrEnum):
 class KnowledgeRecord(BaseModel):
     """A single, structured fact about how a package's public API changed between two versions.
 
-    This is the unit Resync retrieves, not a raw text chunk. See docs/research-foundations.md#3 for why this
-    schema exists instead of embedding changelog prose directly.
+    This is the unit Resync retrieves, not a raw text chunk. See docs/architecture.md#5-research-foundations--citations
+    for why this schema exists instead of embedding changelog prose directly.
 
     `old_symbol`/`new_symbol` are always the clean, fully-qualified symbol path (e.g.
     `transformers.PreTrainedModel.from_pretrained`) — never a call signature with placeholder arguments.
@@ -77,7 +77,7 @@ class KnowledgeRecord(BaseModel):
     """
 
     package: str
-    ecosystem: Literal["pypi", "npm", "crates", "go", "maven"]
+    ecosystem: Literal["pypi", "npm", "crates", "go", "maven", "conan"]
     old_symbol: str
     new_symbol: str | None = None  # None only for RuleType.REMOVED_NO_REPLACEMENT
     parameter: str | None = None  # set when the change is to one keyword argument, not the whole symbol

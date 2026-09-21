@@ -35,7 +35,7 @@ def test_argv_includes_all_configured_flags_using_the_real_verified_names() -> N
     assert argv == [
         "llama-server",
         "-m",
-        "/models/qwen.gguf",
+        str(Path("/models/qwen.gguf")),
         "--host",
         "127.0.0.1",
         "--port",

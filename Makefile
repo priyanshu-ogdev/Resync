@@ -1,7 +1,7 @@
-.PHONY: setup test test-unit test-integration lint format typecheck run-server clean
+.PHONY: setup test test-unit test-integration lint format typecheck verify run-server run-server-http clean
 
 setup:
-	uv sync --extra server --extra cli --group dev
+	uv sync --extra server --extra cli --group dev --group verify
 
 test: test-unit test-integration
 
@@ -20,11 +20,17 @@ format:
 typecheck:
 	uv run mypy src/
 
+verify:
+	uv run python scripts/verify_install.py
+
 run-server:
 	uv run resync serve --transport stdio
 
 run-server-http:
 	uv run resync serve --transport http --port 8787
 
+installer:
+	gcc -O2 -static -Wall scripts/installer.c -o scripts/install.exe
+
 clean:
-	rm -rf .pytest_cache .mypy_cache .ruff_cache .hypothesis dist build *.egg-info
+	uv run python scripts/clean.py

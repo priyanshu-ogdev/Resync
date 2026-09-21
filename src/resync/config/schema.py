@@ -1,6 +1,6 @@
 """Pydantic models for resync.toml.
 
-See docs/adr/0005-config-and-policy-persistence.md for why this file exists and why every check against it
+See docs/architecture.md#decision-5 for why this file exists and why every check against it
 must happen before a potential issue is flagged, not after.
 """
 
@@ -40,8 +40,9 @@ class Pin(BaseModel):
 class Exception_(BaseModel):
     """A file/symbol-level exception for deliberately frozen legacy code.
 
-    `expires` is mandatory by design, not by convention — see docs/adr/0005: an exception with no forced
-    re-review date is exactly the kind of silently-ignored warning this project exists to prevent.
+    `expires` is mandatory by design, not by convention — see docs/architecture.md#decision-5:
+    an exception with no forced re-review date is exactly the kind of silently-ignored warning
+    this project exists to prevent.
     """
 
     path: str
@@ -68,7 +69,7 @@ class AppliedFix(BaseModel):
 
     This is the applied-already guard promised (but not yet built) in `ast_grep_runner.py`'s module
     docstring and `taxonomy.py`'s PatchStrategy.MECHANICAL caveat — the natural extension of the
-    `[[policy]]` mechanism above, per docs/adr/0005: both exist to record "this was already decided or
+    `[[policy]]` mechanism above, per docs/architecture.md#decision-5: both exist to record "this was already decided or
     done, don't re-litigate it on the next scheduled pass."
 
     It exists specifically because REORDER is not naturally idempotent (ast_grep_runner.py's finding 7): a
@@ -105,7 +106,7 @@ class ResyncConfig(BaseModel):
         """The single check every code path must run before flagging a symbol as an issue.
 
         Checking this *before* raising a finding — not filtering findings after the fact — is what keeps
-        intentionally-frozen code out of the trust dashboard entirely, per docs/adr/0005.
+        intentionally-frozen code out of the trust dashboard entirely, per docs/architecture.md#decision-5.
         """
         return any(p.package == symbol or symbol.startswith(p.package) for p in self.pin) or any(
             e.path == symbol for e in self.exception
@@ -123,8 +124,13 @@ class ResyncConfig(BaseModel):
         Matches on all four fields, not just (file, symbol): a *different* fingerprint for the same
         (file, symbol, change_type) means the upstream package changed the same symbol again since the
         last applied fix, which is a new, legitimate fix to apply, not a repeat of the old one.
+        Path separators are normalized so fixes recorded on Windows match on Linux/CI and vice versa.
         """
+        norm_file = file.replace("\\", "/")
         return any(
-            a.file == file and a.symbol == symbol and a.change_type == change_type and a.fingerprint == fingerprint
+            a.file.replace("\\", "/") == norm_file
+            and a.symbol == symbol
+            and a.change_type == change_type
+            and a.fingerprint == fingerprint
             for a in self.applied
         )

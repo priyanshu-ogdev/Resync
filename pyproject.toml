@@ -26,6 +26,7 @@ dependencies = [
     "packaging>=24.0",    # server/tools.py's real version-range containment check — was previously only a
     # transitive dep (mcp/lancedb/etc. all pull it in already); declared explicitly once code directly
     # imports it, per this project's own dependency-hygiene stance (see docs/tech-stack.md)
+    "ast-grep-cli>=0.30", # precompiled binary wheel providing native ast-grep CLI — patch/ast_grep_runner.py requirement
 ]
 
 [project.optional-dependencies]
@@ -49,7 +50,7 @@ server = [
     "pypi-attestations>=0.0.30",  # PyPA's own purpose-built PEP 740 attestation library — verifies a
     # PyPI package's real provenance bundle end-to-end (signature, certificate identity, Rekor transparency
     # log inclusion) via sigstore underneath, so verification/provenance.py doesn't hand-roll that logic
-    "jinja2>=3.1",        # review dashboard templates, served on the same Starlette app — see docs/ui-design.md#surface-3
+    "jinja2>=3.1",        # review dashboard templates, served on the same Starlette app — see docs/workflow.md#surface-3-starlette-review-dashboard-dashboard
     "griffe>=2.2",        # knowledge/extract_api_diff.py — static AST-based API diffing, no torch/heavy deps
     "sandbox-runtime>=0.2",  # verification/sandbox.py's primary isolation backend — confirmed installable
     # and its real API surface confirmed against docs/tech-stack.md's research during Phase 2's sealing
@@ -58,7 +59,7 @@ server = [
 ]
 cli = [
     "typer>=0.12",
-    "rich>=13.0",         # CLI table/color output — see docs/ui-design.md#surface-1-cli-output
+    "rich>=13.0",         # CLI table/color output — see docs/workflow.md#surface-1-terminal-cli--explainability-cards
 ]
 
 [dependency-groups]
@@ -79,6 +80,27 @@ dev = [
 
 [project.scripts]
 resync = "resync.cli.main:app"
+
+# ---------------------------------------------------------------------------
+# Language adapter entry-points
+# ---------------------------------------------------------------------------
+# Built-in adapters are registered here so they participate in the same plugin
+# contract as third-party adapters. Any pip package may add new languages by
+# registering under this group:
+#
+#   [project.entry-points."resync.adapters"]
+#   ruby = "resync_adapter_ruby:RubyAdapter"
+#
+# After `pip install resync-adapter-ruby`, the Ruby adapter is auto-discovered
+# at startup — no Resync code changes required.
+[project.entry-points."resync.adapters"]
+python     = "resync.adapters.python.adapter:PythonAdapter"
+rust       = "resync.adapters.rust.adapter:RustAdapter"
+typescript = "resync.adapters.typescript.adapter:TypeScriptAdapter"
+kotlin     = "resync.adapters.kotlin.adapter:KotlinAdapter"
+go         = "resync.adapters.go.adapter:GoAdapter"
+java       = "resync.adapters.java.adapter:JavaAdapter"
+c_cpp      = "resync.adapters.c_cpp.adapter:CCppAdapter"
 
 [build-system]
 requires = ["hatchling"]

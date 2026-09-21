@@ -50,15 +50,15 @@ def test_no_seed_flag_skips_seeding_even_under_yes(tmp_path: Path) -> None:
 
 
 def test_interactive_walkthrough_accepting_every_default(tmp_path: Path) -> None:
-    # mode(enter=hybrid), profile(enter=pinned), threshold(enter=0.95), pins?(n), seed now?(n)
-    result = runner.invoke(app, ["init", str(tmp_path)], input="\n\n\nn\nn\n")
+    # mode(enter=hybrid), profile(enter=pinned), threshold(enter=0.95), pins?(n), seed now?(n), scaffold now?(n)
+    result = runner.invoke(app, ["init", str(tmp_path)], input="\n\n\nn\nn\nn\n")
     assert result.exit_code == 0, result.output
     assert (tmp_path / "resync.toml").exists()
     assert not store.default_db_path(tmp_path).exists()  # answered "n" to seeding
 
 
 def test_interactive_walkthrough_choosing_non_default_mode(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["init", str(tmp_path)], input="realtime\nlatest\n0.8\nn\nn\n")
+    result = runner.invoke(app, ["init", str(tmp_path)], input="realtime\nlatest\n0.8\nn\nn\nn\n")
     assert result.exit_code == 0, result.output
     with (tmp_path / "resync.toml").open("rb") as f:
         data = tomllib.load(f)
@@ -68,8 +68,8 @@ def test_interactive_walkthrough_choosing_non_default_mode(tmp_path: Path) -> No
 
 
 def test_interactive_walkthrough_adding_pins(tmp_path: Path) -> None:
-    # pins? y -> package, max_version, reason, add another? n -> seed now? n
-    result = runner.invoke(app, ["init", str(tmp_path)], input="\n\n\ny\nrequests\n2.0.0\ntest pin\nn\nn\n")
+    # pins? y -> package, max_version, reason, add another? n -> seed now? n -> scaffold now? n
+    result = runner.invoke(app, ["init", str(tmp_path)], input="\n\n\ny\nrequests\n2.0.0\ntest pin\nn\nn\nn\n")
     assert result.exit_code == 0, result.output
     with (tmp_path / "resync.toml").open("rb") as f:
         data = tomllib.load(f)
@@ -82,7 +82,7 @@ def test_interactive_walkthrough_adding_multiple_pins(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         ["init", str(tmp_path)],
-        input="\n\n\ny\nrequests\n2.0.0\nr1\ny\nnumpy\n1.0.0\nn1\nn\nn\n",
+        input="\n\n\ny\nrequests\n2.0.0\nr1\ny\nnumpy\n1.0.0\nn1\nn\nn\nn\n",
     )
     assert result.exit_code == 0, result.output
     with (tmp_path / "resync.toml").open("rb") as f:
@@ -105,8 +105,27 @@ def test_yes_overwrites_existing_config_without_asking(tmp_path: Path) -> None:
 
 
 def test_invalid_threshold_input_falls_back_to_default_rather_than_crashing(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["init", str(tmp_path)], input="\n\nnot-a-number\nn\nn\n")
+    result = runner.invoke(app, ["init", str(tmp_path)], input="\n\nnot-a-number\nn\nn\nn\n")
     assert result.exit_code == 0, result.output
     with (tmp_path / "resync.toml").open("rb") as f:
         data = tomllib.load(f)
     assert data["confidence"]["auto_apply_above"] == 0.95
+
+
+def test_yes_with_scaffold_mcp_scaffolds_templates(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["init", str(tmp_path), "--yes", "--scaffold-mcp"])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / ".vscode" / "mcp.json").exists()
+    assert (tmp_path / ".cursor" / "mcp.json").exists()
+    assert (tmp_path / ".mcp.json").exists()
+    assert (tmp_path / ".agents" / "mcp_config.json").exists()
+    assert (tmp_path / ".zed" / "settings.json").exists()
+
+
+def test_interactive_walkthrough_scaffolding_mcp_templates(tmp_path: Path) -> None:
+    # mode(enter), profile(enter), threshold(enter), pins?(n), seed?(n), scaffold?(y)
+    result = runner.invoke(app, ["init", str(tmp_path)], input="\n\n\nn\nn\ny\n")
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / ".vscode" / "mcp.json").exists()
+    assert (tmp_path / ".cursor" / "mcp.json").exists()
+    assert "Scaffolded 5 team MCP templates" in result.output

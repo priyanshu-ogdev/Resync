@@ -27,8 +27,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, get_type_hints
 
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
+try:
+    from hypothesis import HealthCheck, given, settings
+    from hypothesis import strategies as st
+
+    HAS_HYPOTHESIS = True
+except ImportError:
+    HealthCheck = None  # type: ignore[misc,assignment]
+    given = None  # type: ignore[assignment]
+    settings = None  # type: ignore[misc,assignment]
+    st = None  # type: ignore[assignment]
+    HAS_HYPOTHESIS = False
 
 from resync.knowledge.schema import KnowledgeRecord, RuleType
 from resync.verification.tier import VerificationTier
@@ -115,6 +124,13 @@ def check_deprecation_window_differential(
     are diffed directly (equal return values, or the same exception type on both sides — never just "neither
     raised", which would miss a case where both raise but for different, unrelated reasons).
     """
+    if not HAS_HYPOTHESIS or st is None or settings is None or given is None:
+        return DifferentialResult(
+            tier=VerificationTier.DEPRECATION_WINDOW_DIFFERENTIAL,
+            passed=False,
+            reason="hypothesis library not installed in current environment",
+        )
+
     shared_params = shared_params or []
     probe_strategy = st.sampled_from(_FALLBACK_CORPUS)  # the renamed parameter's own value — shared, not
     # independently generated per side, since the whole point is testing that the SAME logical value produces
@@ -173,6 +189,13 @@ def check_oracle_signature(record: KnowledgeRecord, new_call: Callable[..., Any]
     remapped call actually binds against the real, currently-installed signature for a range of generated
     inputs — proving the patch is genuinely callable, not just textually plausible.
     """
+    if not HAS_HYPOTHESIS or st is None or settings is None or given is None:
+        return DifferentialResult(
+            tier=VerificationTier.ORACLE_SIGNATURE_CHECK,
+            passed=False,
+            reason="hypothesis library not installed in current environment",
+        )
+
     if record.rule_type == RuleType.RENAME and record.parameter and record.new_parameter:
         new_param = record.new_parameter
     elif record.rule_type == RuleType.RENAME and record.parameter is None and record.new_symbol:

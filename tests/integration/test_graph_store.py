@@ -1,4 +1,5 @@
-"""Real integration tests against an actual Kùzu instance — per docs/testing-strategy.md, mocking the graph
+"""Real integration tests against an actual Kùzu instance — per
+docs/architecture.md#7-testing-strategy--quality-pyramid, mocking the graph
 database away would defeat the point of testing this module at all.
 """
 

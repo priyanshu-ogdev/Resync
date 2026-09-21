@@ -1,4 +1,4 @@
-"""The call/import graph, on the actively-maintained Kùzu fork (docs/adr/0004-graph-index-kuzu-fork.md).
+"""The call/import graph, on the actively-maintained Kùzu fork (docs/architecture.md#decision-4).
 
 Schema creation is wrapped defensively (try/except on re-creation) rather than relying on `IF NOT EXISTS`
 DDL syntax that wasn't independently confirmed against the pinned fork version — consistent with this

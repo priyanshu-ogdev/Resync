@@ -1,14 +1,14 @@
 """Phase 3.4's seam, not its implementation: the generator/critic double-pass from
-docs/adr/0002-differential-equivalence-verification.md is for LLM-drafted (semantic) patches and needs a
+docs/architecture.md#decision-2 is for LLM-drafted (semantic) patches and needs a
 local model — Phase 6's dependency, not Phase 3's. What Phase 3 needs now is somewhere concrete for
 `TrustScore.critic_pass_approved` to eventually get populated from, so that wiring isn't deferred whole and
 `verification/tier.py`'s `VerificationTier.GENERATOR_CRITIC` isn't a dead end with nothing to call.
 
-Modeled on LADU's Summary/Control/Code agent split (cited in ADR 0002): the critic's job is specifically
-adversarial — it must actively find a reason a patch is wrong before it counts as approved, not simply agree
-with the generator that drafted it. `CriticVerdict.approved=True` without at least one populated
-`concerns_considered` entry should be treated with suspicion by any future caller — an approval that didn't
-consider any way the patch could be wrong isn't the adversarial pass ADR 0002 calls for, it's a rubber stamp.
+Modeled on LADU's Summary/Control/Code agent split (cited in Decision 2, docs/architecture.md#decision-2):
+the critic's job is specifically adversarial — it must actively find a reason a patch is wrong before it counts
+as approved, not simply agree with the generator that drafted it. `CriticVerdict.approved=True` without at least one
+populated `concerns_considered` entry should be treated with suspicion by any future caller — an approval that didn't
+consider any way the patch could be wrong isn't the adversarial pass Decision 2 calls for, it's a rubber stamp.
 """
 
 from __future__ import annotations

@@ -76,3 +76,27 @@ def test_pinned_symbol_short_circuits_before_touching_the_store(tmp_path: Path) 
     )
     result = check_symbol_exists("transformers.TrainingArguments", "5.0.1", tmp_path)
     assert result.outcome == VerificationOutcome.PINNED
+
+
+def test_symbol_rename_suggests_replacement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(store, "embed_document", _fake_embed)
+    db_path = store.default_db_path(tmp_path)
+    db_path.parent.mkdir(parents=True)
+    table = store.get_or_create_table(store.connect(db_path))
+    from resync.knowledge.schema import KnowledgeRecord, RecordSource, RuleType
+
+    record = KnowledgeRecord(
+        package="mypkg",
+        ecosystem="pypi",
+        old_symbol="mypkg.OldClass",
+        new_symbol="mypkg.NewClass",
+        from_version="1.0.0",
+        to_version=">=2.0.0",
+        rule_type=RuleType.RENAME,
+        source=RecordSource.API_DIFF_TOOL,
+        confidence=0.95,
+    )
+    store.upsert(table, [record])
+    result = check_symbol_exists("mypkg.OldClass", "2.1.0", tmp_path)
+    assert result.outcome == VerificationOutcome.SYMBOL_DEPRECATED
+    assert result.suggested_replacement == "renamed to `mypkg.NewClass`"

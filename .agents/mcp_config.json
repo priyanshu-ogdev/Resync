@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "resync": {
+      "command": "resync",
+      "args": [
+        "serve",
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}

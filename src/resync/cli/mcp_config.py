@@ -30,7 +30,7 @@ same underlying `command`/`args`/`env` triple somewhere in its own config shape 
 compliance means. So a client with no `ClientSpec` entry yet is not a dead end: `resync mcp-config custom`
 takes the four shape parameters directly (`--root-key`, `--command-style`, `--env-key`, `--type-value`) and
 builds the same way a registered `ClientSpec` would, from the CLI, no code change or new release required.
-`describe_registry()` (`resync mcp-config list`) surfaces each entry's `last_verified` date and `notes` so a
+`describe_registry()` (`resync mcp-config-list`) surfaces each entry's `last_verified` date and `notes` so a
 person can judge for themselves whether a listed format might have drifted since — this module cannot detect
 that on its own (there is no live schema registry for MCP client configs to check against), so it says so
 plainly rather than implying a confidence it doesn't have.
@@ -325,6 +325,45 @@ def config_path_for(client: str, repo_root: Path) -> Path | None:
     return spec.path_resolver(repo_root) if spec.path_resolver is not None else None
 
 
+def infer_client_spec_from_dict(existing: dict[str, Any]) -> ClientSpec | None:
+    """Inspects an existing client configuration dictionary to dynamically infer the client's
+    expected MCP schema shape from any pre-existing server entries.
+
+    Returns a tailored ClientSpec reflecting the exact dialect currently in use, or None if
+    no recognizable server configuration pattern is present.
+    """
+    candidate_keys = ("mcpServers", "servers", "mcp", "context_servers")
+    for key in candidate_keys:
+        val = existing.get(key)
+        if isinstance(val, dict) and val:
+            first_entry = next(iter(val.values()))
+            if isinstance(first_entry, dict):
+                cmd = first_entry.get("command")
+                if isinstance(cmd, list):
+                    cmd_style: CommandStyle = "array"
+                elif isinstance(cmd, dict) and "path" in cmd:
+                    cmd_style = "nested_object"
+                else:
+                    cmd_style = "separate"
+
+                has_type = "type" in first_entry
+                type_val = str(first_entry["type"]) if has_type else None
+                env_key = "environment" if "environment" in first_entry else "env"
+
+                return ClientSpec(
+                    id=f"inferred-{key}",
+                    display_name=f"Inferred ({key})",
+                    root_key=key,
+                    command_style=cmd_style,
+                    requires_type_field=has_type,
+                    type_value=type_val,
+                    env_key=env_key,
+                    last_verified="runtime-inferred",
+                    notes="Dynamically inferred from existing server entries in host configuration file.",
+                )
+    return None
+
+
 def merge_config(existing: dict[str, Any], client: str, *, name: str = "resync") -> dict[str, Any]:
     """Returns a new dict: `existing` with resync's entry added/updated under the right server-list key for
     `client`, every other key and every other server entry left exactly as-is. `existing` itself is never
@@ -335,8 +374,26 @@ def merge_config(existing: dict[str, Any], client: str, *, name: str = "resync")
     if client == "opencode" and "$schema" not in existing:
         result["$schema"] = "https://opencode.ai/config.json"  # first, matching convention — cosmetic only
     result.update(existing)
+
+    # Adaptive schema harmonization: if the existing config has existing servers under spec.root_key,
+    # match any specific dialect variations present in those existing entries.
+    inferred = infer_client_spec_from_dict(existing)
+    if inferred is not None and inferred.root_key == spec.root_key:
+        entry = build_entry(
+            command=_resync_command(),
+            args=_STDIO_ARGS,
+            root_key=inferred.root_key,
+            command_style=inferred.command_style,
+            requires_type_field=inferred.requires_type_field,
+            type_value=inferred.type_value,
+            env_key=inferred.env_key,
+            extra_fields=spec.extra_fields,
+        )
+    else:
+        entry = generate_entry(client, name=name)
+
     servers = dict(result.get(spec.root_key, {}))
-    servers[name] = generate_entry(client, name=name)
+    servers[name] = entry
     result[spec.root_key] = servers
     return result
 
@@ -414,7 +471,7 @@ def format_custom(
 
 def describe_registry() -> list[dict[str, str]]:
     """One row per registered client — `id`, `display_name`, `last_verified`, `notes` — for
-    `resync mcp-config list`. Exists specifically so a person can judge for themselves whether a listed
+    `resync mcp-config-list`. Exists specifically so a person can judge for themselves whether a listed
     format might have drifted since `last_verified`, since this module has no way to check that on its own
     (there's no live schema registry for MCP client configs to compare against) — see module docstring.
     """
@@ -422,3 +479,234 @@ def describe_registry() -> list[dict[str, str]]:
         {"id": spec.id, "display_name": spec.display_name, "last_verified": spec.last_verified, "notes": spec.notes}
         for spec in REGISTRY.values()
     ]
+
+
+@dataclass(frozen=True)
+class AgentConfigTarget:
+    """Represents a discovered AI coding agent configuration target on the system."""
+
+    agent_id: str
+    display_name: str
+    path: Path
+    client_key: str
+    is_global: bool
+
+
+def detect_agent_config_targets(repo_root: Path, *, all_project_targets: bool = False) -> list[AgentConfigTarget]:
+    """Scans the local repository and user environment for all detected AI coding agents.
+
+    Identifies targets for Google Antigravity (global and workspace), Claude Code,
+    Cursor, VS Code, Claude Desktop, Windsurf, and Zed.
+
+    When `all_project_targets` is True, includes all repository-level agent targets (Cursor,
+    VS Code, Zed, Claude Code, Antigravity Workspace) regardless of whether the agent directory
+    currently exists on disk, enabling team template distribution.
+    """
+    targets: list[AgentConfigTarget] = []
+    user_home = Path.home()
+
+    # 1. Google Antigravity Global (~/.gemini/config/mcp_config.json)
+    if not all_project_targets:
+        gemini_cfg_dir = user_home / ".gemini" / "config"
+        if (user_home / ".gemini").exists() or gemini_cfg_dir.exists():
+            targets.append(
+                AgentConfigTarget(
+                    agent_id="antigravity-global",
+                    display_name="Google Antigravity (Global)",
+                    path=gemini_cfg_dir / "mcp_config.json",
+                    client_key="antigravity",
+                    is_global=True,
+                )
+            )
+
+    # 2. Google Antigravity Workspace (.agents/mcp_config.json)
+    targets.append(
+        AgentConfigTarget(
+            agent_id="antigravity-workspace",
+            display_name="Google Antigravity (Workspace)",
+            path=repo_root / ".agents" / "mcp_config.json",
+            client_key="antigravity",
+            is_global=False,
+        )
+    )
+
+    # 3. Claude Code Project (.mcp.json)
+    targets.append(
+        AgentConfigTarget(
+            agent_id="claude-code",
+            display_name="Claude Code",
+            path=repo_root / ".mcp.json",
+            client_key="claude-code",
+            is_global=False,
+        )
+    )
+
+    # 4. Cursor (.cursor/mcp.json)
+    if all_project_targets or (repo_root / ".cursor").exists() or (user_home / ".cursor").exists():
+        targets.append(
+            AgentConfigTarget(
+                agent_id="cursor",
+                display_name="Cursor",
+                path=repo_root / ".cursor" / "mcp.json",
+                client_key="cursor",
+                is_global=False,
+            )
+        )
+
+    # 5. VS Code (.vscode/mcp.json)
+    if all_project_targets or (repo_root / ".vscode").exists():
+        targets.append(
+            AgentConfigTarget(
+                agent_id="vscode",
+                display_name="VS Code",
+                path=repo_root / ".vscode" / "mcp.json",
+                client_key="vscode",
+                is_global=False,
+            )
+        )
+
+    # 6. Claude Desktop (Global)
+    if not all_project_targets:
+        claude_desktop_file = _claude_desktop_path(repo_root)
+        if claude_desktop_file.parent.exists():
+            targets.append(
+                AgentConfigTarget(
+                    agent_id="claude-desktop",
+                    display_name="Claude Desktop",
+                    path=claude_desktop_file,
+                    client_key="claude-desktop",
+                    is_global=True,
+                )
+            )
+
+    # 7. Windsurf (~/.codeium/windsurf/mcp_config.json) (Global)
+    if not all_project_targets:
+        windsurf_file = _windsurf_path(repo_root)
+        if windsurf_file.parent.exists():
+            targets.append(
+                AgentConfigTarget(
+                    agent_id="windsurf",
+                    display_name="Windsurf",
+                    path=windsurf_file,
+                    client_key="windsurf",
+                    is_global=True,
+                )
+            )
+
+    # 8. Zed (.zed/settings.json)
+    if all_project_targets or (repo_root / ".zed").exists():
+        targets.append(
+            AgentConfigTarget(
+                agent_id="zed",
+                display_name="Zed",
+                path=repo_root / ".zed" / "settings.json",
+                client_key="zed",
+                is_global=False,
+            )
+        )
+
+    return targets
+
+
+def write_target_config(target: AgentConfigTarget, *, name: str = "resync") -> Path:
+    """Writes or non-destructively merges the Resync MCP server configuration into a target file.
+
+    Employs adaptive schema inference if the target file already contains other servers,
+    ensuring that dialect conventions (such as type tags or array command styles) are preserved.
+    """
+    path = target.path
+    existing: dict[str, Any] = {}
+    if path.exists():
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            try:
+                loaded = json.loads(text)
+                if isinstance(loaded, dict):
+                    existing = loaded
+            except json.JSONDecodeError:
+                pass
+
+    spec = REGISTRY.get(target.client_key, REGISTRY["claude-code"])
+    inferred = infer_client_spec_from_dict(existing) if existing else None
+    active_spec = inferred if (inferred is not None and inferred.root_key == spec.root_key) else spec
+
+    result: dict[str, Any] = dict(existing)
+    servers = dict(result.get(active_spec.root_key, {}))
+    servers[name] = build_entry(
+        command=_resync_command(),
+        args=_STDIO_ARGS,
+        root_key=active_spec.root_key,
+        command_style=active_spec.command_style,
+        requires_type_field=active_spec.requires_type_field,
+        type_value=active_spec.type_value,
+        env_key=active_spec.env_key,
+        extra_fields=active_spec.extra_fields,
+    )
+    result[active_spec.root_key] = servers
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def ensure_gitignore_unignores(repo_root: Path, targets: list[AgentConfigTarget]) -> list[str]:
+    """Inspects repo_root / '.gitignore' to ensure that project-scoped MCP configuration templates
+    are not accidentally ignored by parent-directory wildcard rules (e.g. '.vscode/' or '.cursor/').
+
+    Appends unignore rules (e.g. '!.vscode/mcp.json') if needed and returns the list of added rules.
+    """
+    gitignore_path = repo_root / ".gitignore"
+    if not gitignore_path.exists():
+        return []
+
+    content = gitignore_path.read_text(encoding="utf-8")
+    lines = [line.strip() for line in content.splitlines()]
+
+    added_unignores: list[str] = []
+
+    for target in targets:
+        if target.is_global:
+            continue
+        try:
+            rel_path = target.path.relative_to(repo_root)
+        except ValueError:
+            continue
+
+        parent_part = rel_path.parts[0] if len(rel_path.parts) > 1 else None
+        if not parent_part:
+            continue
+
+        # Check if parent directory is ignored (e.g. ".vscode", ".vscode/", "/.vscode/")
+        is_parent_ignored = any(
+            line in (parent_part, f"{parent_part}/", f"/{parent_part}", f"/{parent_part}/") for line in lines
+        )
+
+        unignore_rule = f"!{rel_path.as_posix()}"
+        if is_parent_ignored and unignore_rule not in lines:
+            added_unignores.append(unignore_rule)
+
+    if added_unignores:
+        new_content = content
+        if not new_content.endswith("\n"):
+            new_content += "\n"
+        new_content += "\n# Unignore team-shared MCP configuration templates\n"
+        for rule in added_unignores:
+            new_content += f"{rule}\n"
+        gitignore_path.write_text(new_content, encoding="utf-8")
+
+    return added_unignores
+
+
+def scaffold_project_mcp_templates(
+    repo_root: Path, *, name: str = "resync"
+) -> tuple[list[AgentConfigTarget], list[str]]:
+    """Scaffolds all project-scoped MCP configuration templates in repo_root for team distribution,
+    and ensures that .gitignore contains unignore rules for any ignored parent directories.
+
+    Returns (configured_targets, added_gitignore_unignores).
+    """
+    targets = [t for t in detect_agent_config_targets(repo_root, all_project_targets=True) if not t.is_global]
+    for target in targets:
+        write_target_config(target, name=name)
+    unignores = ensure_gitignore_unignores(repo_root, targets)
+    return targets, unignores

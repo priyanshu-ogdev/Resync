@@ -1,5 +1,6 @@
-"""Per docs/testing-strategy.md. These specifically regression-test the two bugs caught in the Phase 1
-review pass: unescaped filter-string interpolation, and the old_symbol/parameter conflation. Written to run
+"""Per docs/architecture.md#7-testing-strategy--quality-pyramid.
+These specifically regression-test the two bugs caught in the Phase 1 review pass:
+unescaped filter-string interpolation, and the old_symbol/parameter conflation. Written to run
 without a live LanceDB connection (monkeypatching the embedding call), since _to_row/_from_row/
 _escape_sql_literal are pure logic that doesn't need one.
 """

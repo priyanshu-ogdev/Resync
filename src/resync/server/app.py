@@ -1,18 +1,19 @@
-"""Builds Resync's MCP server and wires server/tools.py's two functions up as real, callable MCP Tools.
+"""Builds Resync's MCP server and wires verification tools and the patch-equivalence checker
+up as real, callable MCP Tools.
 
-Per docs/adr/0001-mcp-client-server-split.md: one server binary, "local" vs. "server-based" is a transport
+Per docs/architecture.md#decision-1: one server binary, "local" vs. "server-based" is a transport
 choice (stdio for a single developer, Streamable HTTP for a shared team deployment) on the same tool
 implementations — not two separate designs. Built against `mcp>=2.0`, the SDK's stateless-core rewrite: the
 old `mcp.server.fastmcp.FastMCP` class was renamed to `mcp.server.mcpserver.MCPServer` (confirmed against
 this environment's actually-installed `mcp` package, not assumed from the `mcp>=1.0` pin that was still in
 pyproject.toml — the exact gap that pin's own comment flagged and this pass now closes for real).
 
-`repo_root` is resolved once, at server construction, rather than threaded through every MCP call: per ADR
-0001, the stdio transport is "a single trusted local caller" for one developer's own checkout, so there is
-exactly one repo to check per running server process — an agent starts `resync serve` from (or is pointed
-at) the repo it's working in, not a different one per tool call. This is a real, load-bearing design choice,
-not an oversight: if multiple concurrent repos-per-process are ever needed (e.g. a future shared HTTP
-deployment serving several repos), `repo_root` would need to move onto the MCP request/session instead —
+`repo_root` is resolved once, at server construction, rather than threaded through every MCP call: per
+Decision 1 (docs/architecture.md#decision-1), the stdio transport is "a single trusted local caller" for
+one developer's own checkout, so there is exactly one repo to check per running server process — an agent starts
+`resync serve` from (or is pointed at) the repo it's working in, not a different one per tool call. This is a real,
+load-bearing design choice, not an oversight: if multiple concurrent repos-per-process are ever needed (e.g. a future
+shared HTTP deployment serving several repos), `repo_root` would need to move onto the MCP request/session instead —
 flagged here rather than silently baked in as if it were the only possible design.
 """
 
@@ -20,11 +21,19 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
+from resync.server.dashboard import attach_dashboard
 from resync.server.patch_verification import PatchVerificationResult, verify_patch_equivalence
-from resync.server.tools import VerificationResult, check_symbol_exists, verify_package
+from resync.server.tools import (
+    VerificationResult,
+    check_symbol_exists,
+    explain_change,
+    get_compatibility_report,
+    verify_package,
+)
 
 _REPO_ROOT_ENV_VAR = "RESYNC_REPO_ROOT"
 
@@ -49,7 +58,9 @@ def resolve_repo_root(explicit: Path | None = None) -> Path:
 
 
 def build_server(repo_root: Path | None = None) -> MCPServer:
-    """Construct the MCPServer with both real-time gate tools registered.
+    """Construct the MCPServer with the real-time gate tools registered
+    (verify_package, check_symbol_exists, verify_patch_equivalence, explain_change, get_compatibility_report)
+    and attach the review dashboard endpoints.
 
     `repo_root` here is already-resolved (see `resolve_repo_root`); this function takes the resolved value,
     not an "explicit override", so callers that already have a concrete path (tests, `resync check`) don't
@@ -62,7 +73,8 @@ def build_server(repo_root: Path | None = None) -> MCPServer:
         instructions=(
             "Call verify_package before adding a new import or dependency, and check_symbol_exists before "
             "calling a function from an existing dependency, to catch deprecated/removed/renamed APIs and "
-            "known advisories before they land in code. See docs/adr/0003-deterministic-first-patching.md."
+            "known advisories before they land in code. Use explain_change to inspect root causes and options. "
+            "See docs/architecture.md#decision-3-deterministic-first-patching."
         ),
     )
 
@@ -100,6 +112,29 @@ def build_server(repo_root: Path | None = None) -> MCPServer:
         fully_qualified_symbol: str, old_source: str, new_source: str, pinned_version: str
     ) -> PatchVerificationResult:
         return verify_patch_equivalence(fully_qualified_symbol, old_source, new_source, pinned_version, resolved_root)
+
+    @server.tool(
+        name="explain_change",
+        description=(
+            "Provide deep explainability, root cause analysis, trust score breakdown, and remediation options "
+            "([Sync], [Shift], [Pin], [Exception]) for an API change affecting a symbol or package."
+        ),
+    )
+    def _explain_change(target: str, pinned_version: str | None = None) -> dict[str, Any]:
+        return explain_change(target, resolved_root, pinned_version=pinned_version)
+
+    @server.tool(
+        name="get_compatibility_report",
+        description=(
+            "Generate a batch compatibility and explainability report across multiple dependencies or symbols, "
+            "including decomposed trust scores, actionable options, and rich markdown formatting."
+        ),
+    )
+    def _get_compatibility_report(items: list[str]) -> dict[str, Any]:
+        return get_compatibility_report(items, resolved_root)
+
+    # Attach interactive web dashboard and REST API routes to the Starlette HTTP server
+    attach_dashboard(server, resolved_root)
 
     return server
 
