@@ -26,7 +26,7 @@ reason = "CUDA 11.8 hardware constraint on the reference demo environment — IN
 # `expires` forces a re-review instead of letting a pin become permanent tech debt.
 [[exception]]
 path = "src/legacy/adapter.py::old_lora_merge"
-reason = "intentionally frozen, see docs/adr/0006 (not yet written) or ADR-014 in your own tracker"
+reason = "intentionally frozen, see docs/architecture.md#decision-5-resynctoml-as-the-single-source-of-truth or ADR-014 in your own tracker"
 expires = "2027-01-01"
 
 # Persisted sync-vs-shift decisions from the Impact Map (docs/architecture.md#the-impact-map).

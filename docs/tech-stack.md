@@ -20,7 +20,7 @@ unaffected by the lockfile.
 | `uvicorn` | 0.52.4 | HTTP transport for the MCP server | |
 | `starlette` | 1.6.0 | HTTP transport, via `mcp` | Verified this is genuinely the official project (not a typosquat) by checking its package metadata directly. Now past 1.0 — newer than expected from general knowledge, and a concrete example of why this project checks live state instead of assuming |
 | `lancedb` | 0.38.0 | Vector + full-text index | Confirmed healthy in an earlier pass (package health score 83/100, $30M Series A) |
-| `kuzu` | 0.11.3 | Graph index (dev/test resolution) | This resolved version is from the original, now-archived PyPI listing — fine for development, but see `docs/adr/0004-graph-index-kuzu-fork.md`: production should point at the actively-maintained fork instead |
+| `kuzu` | 0.11.3 | Graph index (dev/test resolution) | This resolved version is from the original, now-archived PyPI listing — fine for development, but see `docs/architecture.md#decision-4-actively-maintained-kuzu-community-fork-for-graph-index`: production should point at the actively-maintained fork instead |
 | `fastembed` | 0.8.0 | Embeddings | No `torch` anywhere in its resolved dependency tree — confirmed by inspecting the tree, not just trusting the package description |
 | `httpx` | 0.28.1 | OSV.dev / GitHub Advisory / registry calls (Resync's own use — distinct from `mcp`'s internal `httpx2`) | |
 | `sigstore` | 4.5.0 | Provenance verification | Official client, Python Cryptographic Authority / OpenSSF. `pyproject.toml`'s pin was still `>=3.0` despite this row already recording 4.5.0 — a real docs/pyproject inconsistency, found and fixed to `>=4.0` while building `verification/provenance.py` |
@@ -62,7 +62,7 @@ dependency review needs a maintenance-health check as a separate, explicit step.
 actively-maintained `Vela-Engineering/kuzu` fork instead, which preserves the same Cypher interface and adds
 concurrent multi-writer support relevant to Resync's own multi-adapter write pattern. Full reasoning and the
 fallback option (Memgraph, if a single-company fork of an orphaned project is an unacceptable risk profile) is
-in `docs/adr/0004-graph-index-kuzu-fork.md`.
+in `docs/architecture.md#decision-4-actively-maintained-kuzu-community-fork-for-graph-index`.
 
 ## Dependency compatibility notes
 

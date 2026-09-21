@@ -15,8 +15,12 @@ from real testing that aren't otherwise visible in the code's current shape.
 ## Setup
 
 ```bash
+# Automated one-way setup (background provisions uv, Python 3.12, ast-grep, and Resync):
+./scripts/install.sh --local --dev                                          # Linux / macOS
+.\scripts\install.exe --local --dev                                         # Windows
+
+# Or manual:
 uv sync --extra server --extra cli --group dev --group verify
-pip install ast-grep-cli   # the real binary — patch/ast_grep_runner.py shells out to it, never mock this out
 uv run pre-commit install
 ```
 
@@ -75,18 +79,12 @@ docs, it's stale — this file is the canonical account of what changed and why.
 - `src/resync/verification/` — `tier.py`/`differential.py`/`trust_score.py`/`sandbox.py` are built and
   tested for three of four verification tiers (compile-check, deprecation-window-differential,
   oracle-signature-check); `critic.py` is a `Protocol` seam only, awaiting Phase 6's local-model-backed
-  implementation (now built in `src/resync/llm/`). `src/resync/server/` — `tools.py` (verify_package/check_symbol_exists) and `app.py` (the
-  real MCP stdio/Streamable-HTTP transport wiring) are both built and tested, including against a real MCP
-  client over a real stdio subprocess. `src/resync/cli/main.py`'s `serve`, `check`, and `sync` commands are
-  all wired for real (`check`/`sync` via `cli/scan.py` and the real `patch/ast_grep_runner`, not stubs
-  anymore). `verification/provenance.py` (real PyPI Integrity API + pypi_attestations/sigstore) is built and tested.
-- `src/resync/adapters/` — Language-specific implementations (e.g. `adapters/python/resolver.py` wrapping real `uv`, and `adapters/python/extract_api_diff.py`).
+- `src/resync/server/` — 5 production MCP tools (`tools.py` for verify_package/check_symbol_exists/explain_change/get_compatibility_report, `patch_verification.py` for verify_patch_equivalence), `app.py` (real MCP stdio/Streamable-HTTP transport wiring), and `dashboard.py` (Review Dashboard, AST unified diff preview, and live decision execution).
+- `src/resync/cli/` — `main.py` (`run`, `check`, `explain`, `sync`, `serve`, `doctor`, `init`, `resolve`, `seed`, `ingest`, `mcp-config`), `scan.py` (AST symbol resolution and explainability cards), `mcp_config.py`, and `mcp_verify.py` (two-tier client verification).
+- `src/resync/adapters/` — 7 built-in language adapters (Python, Rust, TypeScript, Kotlin, Java, Go, C/C++) with dynamic entry-point discovery and polyglot monorepo manifest detection (`registry.py`).
 - `src/resync/llm/` — Phase 6's local-model-backed implementation (`generator.py`, `llama_server.py`) and critic model support.
-- `src/resync/impact_map/` — interface only, not yet built; see
-  `docs/implementation-plan.md` for phase status before assuming something here is finished.
-- `docs/adr/` — one file per significant decision, with alternatives considered and consequences. Add one
-  (`docs/adr/0000-template.md`) for any new architectural decision; don't just change the code and leave the
-  reasoning implicit.
+- `src/resync/impact_map/` — interface and policy integration wired to `resync.toml` and Review Dashboard.
+- `docs/architecture.md` (Section 4) — the authoritative record of architectural decisions (Decisions 1–6), with alternatives considered and consequences. Any significant architectural change must be documented here with full rationale; don't just change the code and leave the reasoning implicit.
 - `tests/fixtures/` — every fixture's `NOTES.md` states whether it represents a real, cited change or a
   clearly-marked synthetic one. Never present an invented example as if it were verified.
 
@@ -98,5 +96,5 @@ see `docs/tech-stack.md` for why that's a deliberate constraint, not an oversigh
 ## Before opening a PR
 
 Run `make test lint typecheck`. If you touched `verification/` (once built), add a Hypothesis-based property
-test, not just a fixed-input case — see `docs/testing-strategy.md` for why that layer specifically is held to
+test, not just a fixed-input case — see `docs/architecture.md#7-testing-strategy--quality-pyramid` for why that layer specifically is held to
 a higher bar than the rest of the codebase.

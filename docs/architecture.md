@@ -1,195 +1,230 @@
-# Resync — Architecture
+# Resync — Architecture & Technical Design
 
-This document is the technical companion to `README.md`. It states what the system is, why each component
-exists, and what research or real-world prior art each decision traces back to. See `docs/workflow.md` for the
-step-by-step runtime flow, and `docs/adr/` for the reasoning behind individual decisions in more depth.
+This document is the authoritative technical specification and design guide for Resync. It describes the system architecture, core design principles, foundational research, competitive differentiation, testing and release strategies, and the formal **Architectural Decisions & Rationale** governing each subsystem.
 
-## The problem
+---
 
-Two failure modes motivate this project:
+## 1. Problem Statement
 
-**Old code rots.** Libraries deprecate and remove functions, and codebases accumulate calls into APIs no
-longer present in the pinned version. The flagship example: a Python ML project on `peft` + `bitsandbytes` +
-`transformers` + `torch` hits a decommissioned function or an incompatible CUDA/version combination — one of
-the most common failure classes in ML development.
+Two distinct but converging failure modes motivate this project:
 
-**New code is born broken.** Most code is now written through AI coding agents, and these agents have no live
-knowledge of what's actually installed in a project's lockfile. They hallucinate package names at measured
-rates — researchers call this **slopsquatting**, since attackers pre-register the hallucinated names with
-malicious payloads. A USENIX Security 2025 study of 576,000 AI-generated code samples found 19.7% referenced
-packages that don't exist at all; a 2026 follow-up on frontier models still found 4.6–6.1% hallucination rates,
-with 58% of hallucinated names reproducing on a rerun of the same prompt. The same failure, one level down,
-produces calls into deprecated or removed APIs valid in a model's training data but not in the pinned project.
+### Old Code Rots
+Libraries deprecate, alter, and remove APIs across version boundaries. Over time, codebases accumulate calls into functions no longer present in their updated dependencies. In modern Python ML development—such as stacks combining `peft` + `bitsandbytes` + `transformers` + `torch`—a minor version bump routinely decommissioned vital functions or breaks CUDA compatibility, causing silent runtime failures and broken environments.
 
-No existing tool treats these as the same underlying problem — see the competitive landscape in
-`docs/adr/0001-mcp-client-server-split.md` and `docs/adr/0002-differential-equivalence-verification.md` for
-what was reviewed and why it falls short.
+### New Code is Born Broken (Slopsquatting & AI Hallucinations)
+Most code is now written or assisted by AI coding agents. These models have no live perception of what is actually installed in a project's lockfile, relying instead on stale training data. Consequently, agents hallucinate packages and APIs:
+- **Slopsquatting Attack Surface**: A USENIX Security 2025 study of 576,000 AI-generated code samples found **19.7%** referenced packages that do not exist at all. Attackers exploit this by pre-registering hallucinated names with malicious payloads. A 2026 follow-up across frontier models (Claude Sonnet 4.6, GPT-5.4-mini, Gemini 2.5 Pro) still observed 4.6–6.1% package hallucination rates, with 58% of hallucinated names reproducing on prompt reruns.
+- **Decommissioned API Hallucinations**: Even when package names are valid, models routinely invoke methods deprecated or removed in the pinned version.
 
-## Design principles
+Existing tools (Dependabot, Renovate) only bump version strings in lockfiles without repairing code. Resync unites real-time agent prevention with automated, verified repository self-healing.
 
-1. **Deterministic first, LLM only for the genuinely semantic fraction.** See `docs/adr/0003-deterministic-first-patching.md`.
-2. **Never trust "the tests passed" as proof of correctness.** A 2026 study on LLM-generated refactorings found
-   19–35% were functionally non-equivalent to the original, with ~21% of those undetected by the project's own
-   existing test suite. A separate 2026 study found LLMs are unreliable at judging their own modernization
-   output for exactly this kind of silent drift. See `docs/adr/0002-differential-equivalence-verification.md`.
-3. **Prevention beats correction.** Every bug an agent is stopped from writing is cheaper than every bug fixed
-   afterward.
-4. **Guardrails live in the tool functions, not the prompt.** A call touching a pinned symbol is a hard,
-   deterministic rejection inside the tool implementation — never something a model is merely instructed not to
-   do. Adopted from how Google's Dependency Director enforces its own bot-author allowlist.
+---
 
-## System components
+## 2. Core Design Principles
 
-### Two speeds
+1. **Deterministic First, LLM Only for Genuinely Semantic Shifts**: Apply structural AST replacements (`ast-grep`) wherever a signature transformation is mathematically unambiguous (renames, parameter reorders). Restrict local LLM invocation to complex semantic transformations (param split/merge, return shape changes).
+2. **Never Trust "The Tests Passed" as Proof of Correctness**: Empirical research demonstrates that 19–35% of LLM-generated refactorings are functionally non-equivalent to the original, with ~21% slipping undetected through existing test suites. Furthermore, LLMs suffer from severe self-review blind spots ("Articulate but Wrong"). True verification demands differential, property-based equivalence checks.
+3. **Prevention Beats Correction**: Intercepting an agent before it writes an invalid import or hallucinated function is orders of magnitude cheaper than diagnosing and repairing broken code in CI.
+4. **Guardrails Live in Tool Code, Not System Prompts**: Advisory system prompt instructions ("do not touch pinned packages") fail unpredictably in long agent context windows. Pinned versions and security ceilings must be enforced as hard, deterministic rejections inside MCP tool execution.
 
-- **Real-time prevention** — an MCP tool any agent calls before writing an import or installing a package:
-  does this package exist, is it advisory-flagged, does this symbol exist in the pinned version. Must be a fast
-  lookup, never an LLM call, so it returns before the agent's next token.
-- **Scheduled correction** — risk-tiered, not one fixed cadence, to avoid the PR fatigue Dependabot/Renovate are
-  known for: instant on a critical CVE or an agent-authored commit, daily for mechanical fixes, weekly for
-  anything needing judgment.
+---
 
-### Knowledge layer
-
-A structured knowledge record per change — not a raw embedded chunk of prose — following the template Vul-RAG
-uses for vulnerability knowledge (extracting functional semantics, root cause, and fix from each CVE rather than
-embedding raw text, which found previously-unknown, CVE-assigned bugs in the Linux kernel):
+## 3. System Architecture & Components
 
 ```
-{ package, ecosystem,
-  old_symbol, new_symbol,             # always the clean symbol path — never a call signature with args
-  parameter, new_parameter,           # set instead, when the change is to one keyword argument
-  old_param_order, new_param_order,   # REORDER only — parallel permutation of position labels
-  from_version, to_version,
-  rule_type: rename | reorder | split | merge | return_shape_change |
-             behavior_change | removed_no_replacement,
-  source: compiler_warning | api_diff_tool | changelog_extract,
-  confidence }
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   AI Coding Agents                                      │
+│                (Cursor, Claude Code, Antigravity, VS Code, Zed, Windsurf)                │
+└───────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                            │ MCP Protocol (stdio / Streamable HTTP)
+                                            ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                Resync MCP Gateway Engine                                │
+│  verify_package │ check_symbol_exists │ verify_patch_equivalence │ explain_change      │
+└─────────────┬─────────────────────────────┬───────────────────────────────┬─────────────┘
+              │                             │                               │
+              ▼                             ▼                               ▼
+    ┌──────────────────┐          ┌──────────────────┐            ┌──────────────────┐
+    │ Knowledge Layer  │          │   Patch Engine   │            │   Verification   │
+    │  (LanceDB Vector │          │  (ast-grep AST   │            │  (Differential,  │
+    │   + Kùzu Graph   │          │   Rewriter +     │            │   Hypothesis,    │
+    │   + FastEmbed)   │          │   Taxonomy)      │            │   Critic model)  │
+    └──────────────────┘          └──────────────────┘            └──────────────────┘
+              │                             │                               │
+              └─────────────────────────────┼───────────────────────────────┘
+                                            ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                               Repository State & Config                                 │
+│          resync.toml (pins, expiring exceptions) │ 7 Language Manifests & AST           │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-This is the schema as actually implemented (`src/resync/knowledge/schema.py`), not the earlier design sketch —
-`parameter`/`new_parameter` and `old_param_order`/`new_param_order` were added during Phase 1/2 implementation
-after review found that conflating a symbol's identity with the specific detail that changed broke both
-exact-symbol lookup and the router's own matching regex; see `docs/implementation-plan.md`'s Phase 1 and 2
-status for the full history. `KnowledgeRecord` validates its own consistency at construction time (a pydantic
-`model_validator`) — a `rename` with no real target, or a `reorder` whose orders aren't a true permutation of
-each other, cannot be constructed at all, rather than failing downstream inside the patch layer.
+### Two Operational Speeds
+- **Real-Time Prevention (Fast Gate)**: Deterministic MCP gateway (`verify_package`, `check_symbol_exists`, `verify_patch_equivalence`, `explain_change`, `get_compatibility_report`). Operates under a strict latency budget (<200ms target), executing static lookups against local indexes before an agent emits its next code token.
+- **Scheduled Repository Sweep**: Risk-tiered background sweep (`resync check`, `resync sync`). Triages drift: immediate for critical CVEs or agent commits, daily for mechanical AST updates (`--tier mechanical`), and weekly for complex semantic migrations (`--tier semantic`).
 
-Retrieval is hybrid: dense + BM25 + reciprocal rank fusion (the documented foundation that takes a benchmark
-corpus from roughly 44% to 63% factual accuracy over naive RAG), Contextual Retrieval-style context prepending
-so an isolated chunk doesn't lose its version context, a call/import graph for structural relationships
-(the GraphRAG pattern), and an adaptive router sending simple lookups to the fast path and escalating to full
-agentic retrieval only when needed — the current production consensus rather than one fixed pipeline.
+### Structured Knowledge Layer
+Rather than storing unstructured prose chunks, Resync extracts typed knowledge records following the Vul-RAG model:
+```python
+class KnowledgeRecord(BaseModel):
+    package: str
+    ecosystem: str
+    old_symbol: str  # canonical symbol path without args
+    new_symbol: str
+    parameter: str | None = None
+    new_parameter: str | None = None
+    old_param_order: list[str] | None = None
+    new_param_order: list[str] | None = None
+    from_version: str
+    to_version: str
+    rule_type: RuleType  # rename, reorder, split, merge, return_shape_change, etc.
+    source: RecordSource  # compiler_warning, api_diff_tool, changelog_extract
+    confidence: float
+```
+Retrieval uses hybrid reciprocal rank fusion (BM25 + LanceDB dense vectors with FastEmbed `BAAI/bge-small-en-v1.5`), an in-process Cypher graph index ([`Vela-Engineering/kuzu`](https://github.com/Vela-Engineering/kuzu)), and an adaptive complexity router.
 
-### Signature-change taxonomy
+### Signature-Change Taxonomy & Patch Strategy
+| Change Type | Fix Strategy | Verification Tier |
+|:---|:---|:---|
+| **Rename only** | Mechanical (`ast-grep`) | Tier 1 (Compile check) upgraded to Tier 2 (Deprecation differential) |
+| **Parameter reorder** | Mechanical (`ast-grep` + `AppliedFix` ledger) | Tier 1 (Compile check) + Idempotency state guard |
+| **Param split / merge** | Semantic (Local model synthesis) | Tier 3 (Hypothesis differential test) + Critic review |
+| **Return shape change** | Semantic (Propagates to call sites) | Tier 3 (Differential check) + Adversarial critic pass |
+| **Silent behavior change** | Semantic (Runtime warning capture) | Tier 2 (Deprecation capture) + Tier 3 (Differential check) |
+| **Removed without replacement** | Manual escalation | Policy enforcement; records flagged as non-auto-fixable |
 
-| Change type | Fix strategy | Verification needed |
-|---|---|---|
-| Rename only | Mechanical (ast-grep) | Compile check, upgraded opportunistically to a live deprecation-window differential check when the old parameter still binds on the installed version (`verification/tier.py`) |
-| Param reorder | Mechanical, safely schedulable unattended | Compile check, plus the applied-already guard (`config.schema.AppliedFix`, `ast_grep_runner.apply(..., repo_root=...)`) — closed in Phase 2, see note below for what's still true about the underlying pattern |
-| Param split / merge | Semantic — a value must be derived | Generator/critic double-pass (`verification/critic.py`'s `Protocol` — concrete implementation is Phase 6's dependency) |
-| Return shape change | Semantic, propagates to every call site | Generator/critic double-pass, same as above |
-| Silent behavior change, same signature | Nothing to pattern-match | Deprecation-warning capture + generator/critic double-pass |
-| Removed, no replacement | No automatic fix is safe | Escalate to `resync.toml`; oracle-signature-check still runs where a claimed remapping exists, purely as a documented signal, not to justify auto-applying anything |
+### Trust Scoring
+Every proposed change receives a decomposed trust score across 4 dimensions:
+- `rule_match`: Syntactic and AST structural confidence (0.0–1.0).
+- `test_suite`: Project unit and integration test pass rate.
+- `differential_equivalence`: Dual-execution input/output equivalence.
+- `source_citation`: Reliability of upstream changelog/commit evidence.
 
-The mechanical layer (`src/resync/patch/ast_grep_runner.py`) went through four review passes during
-implementation and accumulated real, hard-won findings that this table alone doesn't capture — including an
-active data-loss bug (renaming one imported name on a multi-name import line silently deleted the others,
-now fixed), a namesake-collision false-positive risk (now partially mitigated by an import-guard pre-check),
-and — most load-bearing — that a param-reorder fix is not naturally idempotent the way a rename is: a
-positional swap matches its own already-fixed output just as validly and swaps back. See
-`docs/implementation-plan.md`'s Phase 2 status for the complete list, and the module's own docstring for the
-full technical detail behind each one — this file stays intentionally high-level and should be treated as a
-map to that detail, not a replacement for it.
+---
 
-### Trust and verification layer
+## 4. Architectural Decisions & Rationale
 
-For every change: static rule-match confidence, test-suite pass/fail (necessary, not sufficient), a
-differential/property-based equivalence check (Hypothesis-generated inputs, old and new code paths compared
-directly, or against an oracle derived from the retrieved knowledge record when the old version can't run
-side-by-side, to avoid the circularity of testing a translation against itself), and a generator/critic
-double-pass mirroring the Summary/Control/Code agent split used in the LADU research. These combine into a
-decomposed trust score returned as structured MCP tool output.
+<a id="decision-1"></a>
+### Decision 1: Single MCP Server with Transport Duality
+- **Context**: Resync must serve heterogeneous AI coding agents (Claude Code, Cursor, Antigravity, OpenCode, VS Code) in both single-developer local workflows and multi-developer shared environments. Bespoke integrations create an $N \times M$ maintenance crisis.
+- **Decision**: Implement a single MCP server binary supporting two runtime transports:
+  - `stdio`: Zero-latency local communication spawned by local agents.
+  - `Streamable HTTP`: Shared team daemon running on Starlette/Uvicorn (`resync serve --transport streamable-http`).
+  Target the **2026-07-28 stateless MCP specification core**, which replaces fragile stateful sessions with single-shot request/response and `resultType: "input_required"`. Pair with an Agent Skill (`skills/resync/SKILL.md`) for agents that rely on file-based capability discovery.
+- **Alternatives Rejected**: Bespoke REST APIs per editor (unmaintainable); stdio-only (rules out team servers); stateful legacy MCP (deprecated).
+- **Consequences**: Defensively built tools handle both single-user trusted execution and concurrent HTTP clients.
 
-### `resync.toml` — the compatibility contract
+<a id="decision-2"></a>
+### Decision 2: Differential Equivalence Over Test Passes
+- **Context**: The traditional metric for automated refactoring tools—"existing tests pass"—fails in 19–35% of cases due to incomplete test suites and silent behavioral drift.
+- **Decision**: Require differential, property-based equivalence verification before semantic patches are accepted. Using Hypothesis, Resync generates inputs targeting changed signatures, executes old and new paths side-by-side, and asserts identical output behavior. Where old code cannot run in parallel, synthetic oracles are derived from retrieved knowledge records. Semantic patches undergo an adversarial generator/critic double-pass (`LlamaServerCritic`).
+- **Alternatives Rejected**: Trusting existing test suites alone (Dependency Director's flaw); unverified LLM self-review (vulnerable to hallucination).
+- **Consequences**: Semantic fixes incur measurable compute and latency overhead to guarantee zero silent behavioral regressions.
 
-See the file at the repo root for the live, commented example. Pins and exceptions are checked *before* a
-change is flagged, not after, so intentionally-frozen legacy code never becomes a false positive. Sync-vs-shift
-decisions from the Impact Map (below) are persisted as `[[policy]]` entries so the same case isn't re-litigated.
+<a id="decision-3"></a>
+### Decision 3: Deterministic-First Patching
+- **Context**: Routine migrations (renames, keyword argument shifts) have exact, deterministic solutions. Invoking LLMs for simple AST transforms introduces non-determinism, cost, and hallucination risk.
+- **Decision**: Classify all changes via a strict signature taxonomy. Apply mechanical changes directly using tree-sitter-based `ast-grep` rules without invoking an LLM. Use local LLM generation only for semantic cases. Enforce `resync.toml` pins inside tool functions as immutable code constraints, not system prompt guidelines.
+- **Alternatives Rejected**: Routing all transforms through LLMs; prompt-only safety instructions.
+- **Consequences**: `ast-grep` is a mandatory core dependency. Parameter reordering requires explicit state tracking (`AppliedFix`) to maintain idempotency.
 
-### Deployment model
+<a id="decision-4"></a>
+### Decision 4: Actively-Maintained Kùzu Community Fork for Graph Index
+- **Context**: Resync's knowledge layer and Impact Map require an embedded, in-process Cypher graph database. The original `kuzudb/kuzu` project was archived in October 2025 following Apple's acquisition of Kùzu Inc.
+- **Decision**: Adopt the active community fork (`Vela-Engineering/kuzu`, maintained by Vela Partners). The fork retains embedded Cypher support, active maintenance, and introduces concurrent multi-writer capabilities required for multi-adapter monorepo scans. Memgraph is retained as an external server fallback.
+- **Alternatives Rejected**: Remaining on the abandoned upstream `kuzudb/kuzu` (unmaintained security risk); Neo4j (heavyweight external daemon, commercial licensing).
+- **Consequences**: Dependency risk is tied to an active single-company community fork.
 
-Resync is one MCP server; local (stdio) versus remote (Streamable HTTP) is a transport choice, not two designs.
-Built against the 2026-07-28 stateless MCP core, which removed the old session-based handshake and deprecated
-Roots/Sampling/Logging in favor of a model where a tool call needing input returns `resultType: "input_required"`
-and is resent with the answer. Shipped alongside a companion Agent Skill for agents that support Skills but
-haven't wired up the MCP server directly, per the current framing that MCP is the capability layer and Skills
-are the know-how layer. See `docs/adr/0001-mcp-client-server-split.md`.
+<a id="decision-5"></a>
+### Decision 5: `resync.toml` as the Single Source of Truth
+- **Context**: Codebases require an auditable mechanism to freeze legacy code and persist migration decisions without perpetual false-positive warnings.
+- **Decision**: Maintain a single root `resync.toml` declaring:
+  - `[[pin]]`: Target version ceilings with mandatory human reasons.
+  - `[[exception]]`: File- or symbol-level upgrade freezes with **mandatory `expires` dates** (to prevent permanent technical debt).
+  - `[[policy]]`: Persisted sync-vs-shift decisions from the Impact Map.
+  Checks execute *prior* to issue generation, eliminating false positives. Inline pragmas (`# resync: pin reason="..."`) provide granular, in-code overrides.
+- **Alternatives Rejected**: Central cloud config service (breaks local version control); exceptions without expiry (creates unmonitored technical debt).
+- **Consequences**: All scanner and verification paths must parse `resync.toml` on startup.
 
-### Multi-language adapters
+<a id="decision-6"></a>
+### Decision 6: Declarative Registry for Multi-Agent Configuration
+- **Context**: AI coding environments (Claude Desktop, Claude Code, Cursor, VS Code, OpenCode, Windsurf, Zed, Antigravity) use four fundamentally incompatible JSON config schemas and different file locations.
+- **Decision**: Implement a declarative `ClientSpec` registry and generic `build_entry()` generator (`resync.cli.mcp_config`). Parameterize command style (`separate`, `array`, `nested_object`), root key (`mcpServers`, `servers`, `mcp`, `context_servers`), and env mapping. Support `resync mcp-config <client>`, `resync mcp-config-list` (with verification dates and bug notes), and a `resync mcp-config custom` escape hatch.
+- **Alternatives Rejected**: Nested `if/elif` branches (unmaintainable); guessing unsettled config paths (risks corrupting client settings).
+- **Consequences**: Adding support for new clients is a pure metadata configuration change.
 
-The core is language-agnostic; each language plugs in via `parse_manifest`, `resolve`, `extract_api_diff`,
-`structural_patch`, `capture_deprecation_signals`. Adapters shell out to each ecosystem's native CLI tool
-(`ast-grep`, `cargo-semver-checks`, `tsc`) rather than reimplementing per-language logic:
+---
 
-| Language | API-diff tool | Structural patch |
-|---|---|---|
-| Python | Custom `ast`/`inspect` diffing (no mature dedicated tool exists) | ast-grep |
-| Rust | `cargo-semver-checks` | ast-grep, plus `cargo fix` for rustc-known migrations |
-| TypeScript | TypeScript Compiler API (same technique as Microsoft's API Extractor) | ast-grep |
-| Java (roadmap) | revapi / japicmp | ast-grep |
-| Go (roadmap) | go-apidiff | ast-grep |
+## 5. Research Foundations & Citations
 
-### Supply-chain provenance gate
+1. **Hybrid Retrieval & Reranking**: Naive vector RAG retrieves factual context accurately only ~44% of the time. Fusing dense embeddings with BM25 via Reciprocal Rank Fusion (RRF) and cross-encoder reranking lifts accuracy to ~63% (ARAGOG benchmark).
+2. **Contextual Retrieval (Anthropic 2024)**: Document-level context is prepended to chunks before embedding, preserving version and library scope for short changelog snippets.
+3. **Structured Security Knowledge (Vul-RAG)**: Extracting functional purpose, root cause, and remediation into structured records rather than raw prose chunks significantly boosts retrieval relevance and catches previously unknown vulnerabilities.
+4. **Repository-Level Code Retrieval (RACG)**: Incorporates findings from RepoCoder (iterative retrieve-generate loops), AutoCodeRover/SWE-agent (ReAct-style reflection), and Repoformer (selective retrieval gating).
+5. **Low-VRAM Local Execution**: 
+   - Uses `fastembed` (ONNX Runtime, `BAAI/bge-small-en-v1.5`) for embedding generation, eliminating all PyTorch (`torch`) runtime dependencies from the core server.
+   - Leverages llama.cpp with 4-bit quantization (Q4_K_M) for 7B/14B local models within a 6–12GB VRAM envelope, referencing TurboQuant (ICLR 2026, arXiv:2504.19874) for KV-cache rotation.
 
-Before landing any resolved version: check it against OSV.dev and the GitHub Advisory Database, and where
-available its Sigstore signature or SLSA provenance attestation. An automated upgrader is itself a supply-chain
-attack surface if it blindly trusts whatever a resolver picks.
+---
 
-### The Impact Map
+## 6. Prior Art & Competitive Landscape
 
-When a signature change has no single obviously-correct propagation: build an impact map from the call/import
-graph, cluster call sites by usage-pattern similarity using the anti-unification technique Facebook's Getafix
-uses to mine fix patterns from a codebase's own commit history (which predicted the exact human-written fix as
-the top suggestion in up to 91% of cases for some bug categories, in production at Facebook), and check for an
-established local precedent before asking anyone anything. Only elicit a decision — via MCP's `input_required`
-mechanism — when genuinely undecided. At scale, execute a confirmed "sync" the way Google's large-scale-change
-infrastructure does: sharded into small, independently reviewable and revertible PRs rather than one diff, a
-pattern proven at extreme scale by Google's own LLM-assisted 32-bit-to-64-bit integer migration, which cut a
-two-year manual project in half with AI generating 70% of the changes.
+| Tool / Project | Category | Mechanism | Resync Advantage |
+|:---|:---|:---|:---|
+| **Dependabot / Renovate** | Version Bumper | Opens PRs with version bumps in lockfiles; fails CI if breaking changes exist. | Resync actively patches broken call sites, verifies semantic equivalence, and prevents PR fatigue via risk-tiered scheduling. |
+| **bump-pydantic / Codeshift** | Specific Codemods | Hand-written AST rules for single library migrations (e.g. Pydantic v1→v2). | Resync uses a generalized, polyglot `ast-grep` engine driven by dynamic knowledge records rather than hard-coded rules. |
+| **Google Dependency Director** (July 2026) | Reactive Agent | Listens for failed bot PRs, invokes Gemini to iteratively rewrite code up to 3 times, sandboxed. | Resync operates **proactively** (intercepting agent calls before commit), runs fully offline ($0 marginal token cost), and verifies patches with differential testing rather than trusting test-suite passes. |
+| **LADU / LAMB** | Academic Agent | Multi-agent Java migration bots consulting docs. | Prototypes without persistent knowledge stores; Resync provides incremental, cached knowledge records and multi-language support. |
+| **DepsRAG** | Graph RAG | Graph Q&A across PyPI/npm dependencies. | Q&A only; DepsRAG cannot inspect or patch application code. |
+| **Facebook Getafix** | Fix Mining | Mines past bug fixes using hierarchical clustering and anti-unification. | Resync adopts Getafix's anti-unification technique for blast-radius clustering in the Impact Map. |
 
-## Build priority
+---
 
-This table is the original hackathon-scoped ordering — still accurate for what a first working demo needs,
-but superseded as the complete picture by `docs/implementation-plan.md`'s full Phase 0–9 sequence, which
-extends through scaling and shipping. Read this table for "what's the minimum to demo," and
-`implementation-plan.md` for "what's the complete path to a released, scalable product."
+## 7. Testing Strategy & Quality Pyramid
 
-| Priority | Scope | Status |
-|---|---|---|
-| 1 | Core loop on the Python/ML-stack niche | Must be fully working |
-| 2 | Real-time MCP gate wired into at least one agent | Must be fully working |
-| 3 | `resync.toml` pin/exception handling | Must be fully working |
-| 4 | Supply-chain provenance check | Should be working |
-| 5 | GitHub App wrapper, tiered scheduling | Nice to have |
-| 6 | Multi-language adapters, Impact Map, manifest standard, benchmark | Roadmap only |
+Testing Resync requires rigorous standards because the system's entire premise is that conventional testing is insufficient:
 
-## References
+1. **Unit Tests (276 tests)**: Strict isolation exercising pure logic in `config`, `knowledge`, `patch`, `verification`, and `adapters`.
+2. **Property-Based Tests (Hypothesis)**: Tests of the verification layer itself, generating adversarial inputs against `RuleType` classifiers, `TrustScore` calculations, and `resync.toml` parsing.
+3. **Integration Tests (106 tests)**: Real subprocess execution against real binaries (`ast-grep`, `uv`, local LanceDB/Kùzu stores, and real stdio/HTTP MCP handshakes).
+4. **Adversarial Security Tests**: Asserts correct rejection of slopsquatted package names, malicious lockfiles, and invalid Sigstore attestations.
+5. **Latency Budget Enforcement**: Asserts that real-time MCP gateway tools return within strict latency targets (<200ms p95 on warm local caches).
+6. **Code Quality Standards**: 100% compliance with `ruff check`, `ruff format`, and `mypy --strict` across all source modules.
 
-- Spracklen et al., "We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code
-  Generating LLMs," USENIX Security 2025.
-- 2026 frontier-model slopsquatting follow-up (Claude Sonnet 4.6, GPT-5.4-mini, Gemini 2.5 Pro, DeepSeek V3.2).
-- 2026 study on functional non-equivalence in LLM-generated refactorings (19–35% non-equivalent, ~21% test-suite
-  escape rate) and the companion "Articulate but Wrong" study on LLM self-review failure in code modernization.
-- Anthropic, "Contextual Retrieval" (2024).
-- Vul-RAG: knowledge-level RAG for vulnerability detection, evaluated against real Linux kernel bugs.
-- RepoCoder, SWE-agent, AutoCodeRover, Repoformer — repository-level code retrieval and agentic editing research.
-- Google, "Dependency Director" (Antigravity SDK + Gemini, July 2026) — closest reactive prior art.
-- Facebook's Getafix — fix-pattern mining via hierarchical clustering and anti-unification, production-deployed.
-- Google's large-scale-change (Rosie) infrastructure, and the LLM-assisted 32-bit-to-64-bit integer migration
-  paper.
-- TurboQuant (Google Research, ICLR 2026, arXiv:2504.19874) — KV-cache quantization; informs the local-execution
-  design even though Resync defaults to the already-shipped llama.cpp equivalent.
-- MCP specification revision, 2026-07-28 (stateless core).
-- "Skills vs MCP: How AI Tools Have Evolved" — the capability/know-how framing behind shipping both an MCP
-  server and a companion Agent Skill.
+---
+
+## 8. Release & Publishing Strategy
+
+- **Semantic Versioning**: Strict SemVer 2.0.0 (`v0.1.0`), driven by Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`).
+- **PyPI Trusted Publishing**: Secure OIDC publishing via `pypa/gh-action-pypi-publish` with no permanent API tokens stored in repository secrets.
+- **Verification Gate on Release**: Resync's own supply-chain provenance gate and `resync doctor` diagnostics must pass cleanly on clean-room runner environments before publication.
+- **Distribution Packages**:
+  - Python Package (`resync-mcp` on PyPI).
+  - Standalone Single-Binary Installers: POSIX shell (`scripts/install.sh`) and Windows native C executable (`scripts/install.exe`).
+
+---
+
+## 9. Build Priority & Component Status
+
+| Priority | Scope | Implementation Status |
+|:---|:---|:---|
+| **1** | Core loop on Python/ML-stack niche | **Fully Built & Verified** (`griffe`, `pip download`, `ast-grep`) |
+| **2** | Real-time MCP gate (5 production tools) | **Fully Built & Verified** (stdio & Streamable HTTP) |
+| **3** | `resync.toml` pin/exception engine | **Fully Built & Verified** (Pydantic TOML persistence, `AppliedFix` guard) |
+| **4** | Supply-chain provenance gate | **Fully Built & Verified** (PEP 740 attestations + Sigstore) |
+| **5** | Terminal UI & Starlette Review Dashboard | **Fully Built & Verified** (`rich` explainability cards, `/dashboard` web UI) |
+| **6** | Polyglot Language Adapters (7 languages) | **Fully Built & Verified** (Python, Rust, TypeScript, Go, Kotlin, Java, C/C++) |
+
+---
+
+## 10. Consolidated Academic & Industry References
+
+- Spracklen et al., *"We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code Generating LLMs,"* USENIX Security 2025.
+- *"Articulate but Wrong: Self-Review Failures in LLM-Based Code Modernization,"* 2026.
+- Anthropic, *"Contextual Retrieval,"* 2024.
+- Vul-RAG, *"Knowledge-Level RAG for Vulnerability Detection,"* evaluated on Linux kernel vulnerabilities.
+- RepoCoder, SWE-agent, AutoCodeRover, Repoformer, *Repository-Level Code Retrieval and Agentic Refactoring Benchmarks*.
+- Google, *"Dependency Director: Automated Dependency Repair with Gemini and Antigravity,"* July 2026.
+- Bader et al., *"Getafix: How Facebook automatically fixes bugs for millions of developers,"* 2019.
+- TurboQuant, *"Outlier-Neutralized KV-Cache Quantization,"* Google Research, ICLR 2026.
+- Model Context Protocol (MCP) Specification Revision, July 28, 2026 (Stateless core).

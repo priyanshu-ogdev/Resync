@@ -41,11 +41,8 @@ uv run mypy src/
 
 ## Architecture changes
 
-Any change that affects a core design decision — not an implementation detail — should come with an
-Architecture Decision Record. Copy `docs/adr/0000-template.md`, number it sequentially, and reference it from
-`docs/architecture.md` if it supersedes or extends an existing decision. This is how the project got the
-decisions documented in `docs/adr/` in the first place, and it's how future contributors will understand *why*
-something is built the way it is, not just *what* it does.
+Any change that affects a core design decision — not an implementation detail — should be documented with
+its context, decision, alternatives considered, and consequences in `docs/architecture.md` (Section 4: Architectural Decisions & Rationale). This is how future contributors will understand *why* something is built the way it is, not just *what* it does.
 
 ## Commit messages
 

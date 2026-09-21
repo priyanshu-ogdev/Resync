@@ -1,39 +1,46 @@
-# Documentation index
+# Documentation Index
 
-Start with `../README.md` for the project summary, then read in this order for full context:
+This directory contains the comprehensive technical documentation for Resync.
 
-1. **[`PRD.md`](PRD.md)** — the *what and why*: problem, target users, goals and success criteria,
-   requirements, explicit scope boundaries. Start here if you're asking "should this exist" rather than
-   "how does this work."
-2. **[`architecture.md`](architecture.md)** (aliased as [`design.md`](design.md)) — the complete system
-   design: the problem, design principles, every component, the build-priority table.
-3. **[`workflow.md`](workflow.md)** — the end-to-end runtime flow, one fix from an agent's first keystroke to
-   a merged PR.
-4. **[`implementation-plan.md`](implementation-plan.md)** — the complete phased build plan, Phase 0 through
-   Phase 9: foundation through knowledge layer, patch layer, verification, the MCP server, delivery, scaling,
-   and release — with exit criteria per phase and the honest, precise status of each, not rounded up.
-5. **[`testing-strategy.md`](testing-strategy.md)** — how each layer is tested, and why the verification layer
-   is held to a higher bar than the rest of the codebase.
-6. **[`release-plan.md`](release-plan.md)** — versioning, PyPI Trusted Publishing, and the pre-release and
-   launch checklists.
-7. **[`ui-design.md`](ui-design.md)** — the three surfaces a human actually looks at, and the design
-   principles behind each.
-8. **[`research-foundations.md`](research-foundations.md)** — the retrieval, verification, and local-execution
-   research every architectural choice traces back to.
-9. **[`competitive-landscape.md`](competitive-landscape.md)** — every existing tool and research prototype
-   reviewed, and exactly what Resync does differently from each.
-10. **[`tech-stack.md`](tech-stack.md)** — the full dependency manifest, including the Kùzu maintenance finding
-    and the reasoning behind every package choice.
-11. **[`multi-language-adapters.md`](multi-language-adapters.md)** — the adapter interface and each language's
-    concrete implementation plan.
-12. **[`adr/`](adr/)** — Architecture Decision Records for individual, significant decisions. Start with
-    `adr/0000-template.md` if you're adding a new one.
+For a high-level introduction and quick start, see the root [`README.md`](../README.md). For technical depth, read the documentation in the following recommended order:
 
-See also **[`../AGENTS.md`](../AGENTS.md)** at the repo root — instructions specifically for AI coding agents
-working in this codebase, including the single most important convention in the project (verify against a
-real library or binary before writing code that calls it) and the list of tests that intentionally document
-known limitations and should not be "fixed" by loosening their assertions.
+---
 
-If a decision in `architecture.md` seems under-justified, check whether there's an ADR for it before assuming
-it wasn't considered — the ADRs exist specifically to carry the "why," including alternatives that were
-reviewed and rejected.
+## Core Reading Order
+
+1. **[`PRD.md`](PRD.md)** — **Product Requirements Document**
+   The *what and why*: problem statement (code rot + agent slopsquatting), user personas, functional and non-functional requirements, verification gates, and explicit scope boundaries.
+
+2. **[`architecture.md`](architecture.md)** — **System Architecture & Technical Design**
+   The primary technical design authority:
+   - System design, two-speed architecture, and core components.
+   - **Integrated Architectural Decisions & Rationale**: The 6 foundational architectural decisions (MCP transport duality, differential equivalence, deterministic-first patching, embedded Kùzu graph, `resync.toml` policy persistence, and declarative multi-agent configuration).
+   - **Research Foundations**: Theoretical grounding across hybrid RAG, Contextual Retrieval, Vul-RAG, and low-VRAM local execution.
+   - **Competitive Landscape & Prior Art**: Deep analysis differentiating Resync from Dependency Director, Dependabot, Renovate, LADU, and Getafix.
+   - **Testing & Release Strategies**: The multi-tiered testing pyramid (Hypothesis, integration, latency budgets) and SemVer / PyPI Trusted Publishing.
+
+3. **[`workflow.md`](workflow.md)** — **Runtime Workflow & User Experience**
+   The step-by-step lifecycle of a fix from an agent's keystroke through verification to PR delivery, plus the three dedicated user interaction surfaces:
+   - Surface 1: Terminal CLI & Explainability Cards (`resync check --explain`, `resync explain <symbol>`).
+   - Surface 2: GitHub PR Comments (auditable trust breakdowns and provenance metadata).
+   - Surface 3: Starlette Review Dashboard (`http://127.0.0.1:8787/dashboard`, unified AST diff viewer, and live triage APIs).
+
+4. **[`multi-language-adapters.md`](multi-language-adapters.md)** — **Polyglot Adapters & Plugin Engine**
+   The three-tier plugin discovery engine and technical specifications for all 7 active language adapters: Python, Rust, TypeScript/JavaScript, Go, Kotlin/JVM, Java, and C/C++.
+
+5. **[`tech-stack.md`](tech-stack.md)** — **Technology Stack & Dependencies**
+   The complete resolved dependency manifest, maintenance evaluations (including the Kùzu community fork finding), zero-`torch` local embedding runtime, and Sigstore provenance verification.
+
+6. **[`verification-report.md`](verification-report.md)** — **Real-World Empirical Verification Report**
+   Empirical testing results and operational validation across real-world open-source codebases: Android/Kotlin/NDK (`goprivate`) and full-stack polyglot AI assistant (`HacktT`).
+
+7. **[`implementation-plan.md`](implementation-plan.md)** — **Engineering Roadmap & Progress Audit**
+   The 10-phase engineering roadmap, exit criteria, and status audits across all phases.
+
+---
+
+## Operational References
+
+- **[`../AGENTS.md`](../AGENTS.md)** — Cross-tool instructions for AI coding agents working in this repository.
+- **[`../scripts/`](../scripts/)** — Automated single-launch installers (`install.exe`, `install.sh`), environment verification (`verify_install.py`), and repository clean script (`clean.py`).
+- **[`../examples/`](../examples/)** — Ready-to-use agent MCP configurations (`examples/mcp-configs/`) and GitHub Actions workflows (`examples/github-actions/`).

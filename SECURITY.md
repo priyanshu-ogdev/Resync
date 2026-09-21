@@ -26,7 +26,7 @@ Resync's own design surface includes a few areas that deserve extra scrutiny fro
 
 - **The real-time MCP gate** (`verify_package`, `check_symbol_exists`) — any bypass that lets an unverified or
   advisory-flagged package pass the check is a high-severity issue.
-- **`resync.toml` pin/exception enforcement** — per `docs/adr/0003-deterministic-first-patching.md`, these
+- **`resync.toml` pin/exception enforcement** — per `docs/architecture.md#decision-3-deterministic-first-patching`, these
   checks must be enforced in tool functions, not merely advisory in a prompt; any path that lets a model-drafted
   patch bypass a pin is a design-breaking bug, not a minor one.
 - **The supply-chain provenance gate** (OSV.dev / GitHub Advisory / Sigstore checks) — false negatives here

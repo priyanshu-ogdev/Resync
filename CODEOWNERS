@@ -6,4 +6,4 @@
 
 /src/resync/verification/  @resync-maintainers
 /src/resync/config/        @resync-maintainers
-/docs/adr/                 @resync-maintainers
+/docs/                     @resync-maintainers

@@ -6,9 +6,57 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Documentation & Architecture Synchronization
+- **Production-Grade Root `README.md` Overhaul**: Replaced early scaffold documentation with a complete, production-grade guide featuring architecture diagrams, dual-speed capabilities, single-launch quickstarts, full CLI reference (`init`, `doctor`, `serve`, `check`, `sync`, `resolve`, `ingest`, `seed`, `mcp-config`), real-time MCP tool schemas, 8-agent compatibility matrix, and test metrics (327 passing tests, zero-torch footprint).
+- **`docs/PRD.md` Alignment**: Synchronized the Goals and Functional Requirements tables to reflect completion of Phase 3 (multi-tier verification), Phase 4 (real-time MCP gate), Phase 5 (resolver, provenance gate, structural diffing), Phase 6 (local model integration and adversarial critic), and Phase 7 (terminal UI and delivery).
+- **`docs/architecture.md` Alignment**: Updated the Real-Time Prevention Gate description to explicitly detail all three registered MCP tools (`verify_package`, `check_symbol_exists`, `verify_patch_equivalence`) and updated the Build Priority table to state real, verified milestone status.
+- **`docs/workflow.md` Alignment**: Synchronized end-to-end operational steps and the visual sequence diagram with concrete CLI commands, AST verification, and automated agent feedback loops.
+- **Fixed a real bug in the Windows installer**: it directly hand-wrote a hardcoded JSON shape to a
+  *guessed* Antigravity config path (`%USERPROFILE%\.gemini\config\mcp_config.json`), bypassing the
+  registry entirely and contradicting this project's own documented "never guess" rule for that client
+  (`ClientSpec.path_resolver=None` for antigravity, precisely because research found genuinely conflicting
+  path reports — see `cli/mcp_config.py`'s module docstring). It also wrote an undocumented, unconfirmed
+  `.agents/mcp_config.json` file. Both removed; Antigravity now goes through `resync mcp-config antigravity`
+  like every other client, which correctly refuses to auto-write and prints the snippet + guidance instead.
+- Removed `ensure_mcp_config_file()`, the installer's own bespoke, hardcoded-shape JSON writer — the exact
+  "hardcode and re-align on every drift" pattern the registry (`mcp_config.py`) exists to replace. Every
+  client, including the "no agent detected" fallback, now goes through the real `resync mcp-config` CLI —
+  one source of truth for config shape, not two that can drift apart.
+- Both installers now pass `--verify` on every client they configure (non-fatal: a failed verification
+  warns and continues, since `--verify` reporting `unavailable` is expected for clients with no headless
+  check — see the new Tier A/B verifier). Both also print the installed `resync` version alongside each
+  client it configures, for a visible record of exactly what was verified against what.
+- Added the three previously-missing client detections both installers already had a registry entry for but
+  never checked: **Windsurf** (`~/.codeium/windsurf`), **Zed** (`.zed/`, `%LOCALAPPDATA%\Zed`), **OpenCode**
+  (`opencode.json`).
+- Fixed a Windows-installer detection bug where Claude Code's condition included `dir_exists(user_profile)`
+  — the user's home directory always exists, so this clause made the check effectively unconditional.
+- `install.exe` recompiled from the updated `installer.c` (`x86_64-w64-mingw32-gcc -O2 -static -Wall`, zero
+  warnings) and included in this change — not source-only.
+
+### `resync mcp-config --verify` — a two-tier, per-client verifier
+`src/resync/cli/mcp_verify.py`, wired into `mcp-config` as an opt-in `--verify` flag.
+
+- **Tier A — ask the real client.** Claude Code (`claude mcp list`) and Cursor (`cursor-agent mcp list`)
+  ship real headless CLIs that read the client's actual loaded config and report their own live status —
+  the client itself, not a reimplementation. Real, currently-open caveats are honored rather than hidden:
+  Claude Code's documented multi-server connection race (anthropics/claude-code#21341) and CLI socket
+  failures (#34982) surface as `failed` with the caveat named; Cursor's headless CI approval requirement
+  surfaces as `unavailable`, never a false pass.
+- **Tier B — direct spawn-and-handshake**, the client-agnostic fallback for every other registered client
+  (and for Claude Code/Cursor whenever Tier A itself can't run): spawn the real `command`/`args` pair just
+  written and run a real MCP `initialize` + `tools/list` against it via the real client SDK.
+- Antigravity deliberately has no Tier A entry: a real `agy` CLI exists, but no headless "list mcp servers"
+  subcommand for it could be confirmed, and the one third-party-documented config path found conflicts with
+  the multiple already-logged conflicting reports — fabricating a checker against an unconfirmed command
+  would violate the same fail-closed principle this module exists to uphold.
+- `HandshakeResult.status` is `verified` / `failed` / `unavailable`, never a bare bool — a missing SDK or
+  CLI binary can't be mistaken for a pass. Proven with real (unmocked) subprocess-spawned MCP servers in
+  `tests/integration/test_mcp_verify_handshake.py`.
+
 ### MCP client config generation — 8 real, verified formats via a declarative, scalable registry
 `resync mcp-config` (new CLI command), `resync mcp-config-list`, and `resync mcp-config custom` — see
-`docs/adr/0006-mcp-client-config-generation.md` for the full design account.
+`docs/architecture.md#decision-6-declarative-registry-for-multi-agent-configuration` for the full design account.
 
 - Live research (2026-09) into each client's own current documentation and real bug trackers found **four
   genuinely different JSON shapes** across eight clients, not one shape with cosmetic differences: Claude

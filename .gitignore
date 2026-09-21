@@ -17,8 +17,9 @@ venv/
 .coverage
 htmlcov/
 
-# Type checkers
+# Type checkers & Linters
 .mypy_cache/
+.ruff_cache/
 .ty_cache/
 
 # Local data / knowledge indexes (never commit generated indexes)
@@ -36,7 +37,21 @@ data/
 .env
 .env.local
 
-# OS / editor
+# OS / editor / scratch
 .DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
 .idea/
 .vscode/
+*.swp
+*~
+*.bak
+*.orig
+*.rej
+*.patch
+scratch/
+tmp/
+
+# Unignore team-shared MCP configuration templates
+!.vscode/mcp.json

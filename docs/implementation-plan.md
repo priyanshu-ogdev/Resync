@@ -22,7 +22,7 @@ honesty note below.**
 - Bind `KnowledgeRecord` (already defined) to a LanceDB table schema; implement insert/upsert. **Done** —
   `knowledge/store.py`, verified against current LanceDB docs (`lancedb.pydantic.LanceModel`/`Vector`,
   `RRFReranker` as the default hybrid reranker).
-- Stand up the graph index on the Kùzu fork (`docs/adr/0004`): `File` nodes, `IMPORTS` edges initially.
+- Stand up the graph index on the Kùzu fork (`docs/architecture.md#decision-4-actively-maintained-kuzu-community-fork-for-graph-index`): `File` nodes, `IMPORTS` edges initially.
   **Done** — `knowledge/graph_store.py`.
 - Wire `fastembed` for chunk/record embedding (`docs/tech-stack.md` — no `torch` anywhere in this phase).
   **Done** — `knowledge/embeddings.py`.
@@ -137,7 +137,7 @@ tracked as a named prerequisite for Phase 6, not silently assumed solved.
   `patch/taxonomy.py`, folding in `resync.toml`'s confidence threshold, not just `RuleType.is_mechanical`
   alone. Malformed records (a RENAME with no actual target, a REORDER with a non-permutation) are now
   rejected at `KnowledgeRecord` construction time via a pydantic validator, not discovered downstream inside
-  the patch layer — see `docs/adr/0003` and `knowledge/schema.py`.
+  the patch layer — see `docs/architecture.md#decision-3-deterministic-first-patching` and `knowledge/schema.py`.
 - Generate ast-grep rules for `RENAME` and `REORDER` cases from a `KnowledgeRecord`. **Done**, upgraded, and
   scope-bounded honestly — see below.
 
@@ -247,7 +247,7 @@ infers a generation strategy per parameter directly from type annotations when t
 supplied, and `st.from_type(annotation)` does the same standalone — this is the actual mechanism Phase 3's
 property-generation step is built on, not assumed API shape.
 
-**Correction, found by re-reading `docs/adr/0002` closely rather than from the phase summary alone**: "execute
+**Correction, found by re-reading `docs/architecture.md#decision-2-differential-equivalence-over-test-passes` closely rather than from the phase summary alone**: "execute
 the old and new code paths side by side wherever both are available" does not mean diffing two installed
 *library* versions (that's `extract_api_diff`'s job, in Phase 1/5). It means the *target repo's* pre-patch and
 post-patch call — e.g. `TrainingArguments(no_cuda=True)` vs. the mechanically-patched
@@ -276,12 +276,12 @@ require running real training, which is exactly the `torch`-and-GPU dependency t
 pulling into its own runtime.
 
 **Goal:** every proposed patch is checked for behavioral equivalence appropriate to its risk tier — never
-just "the tests passed" alone (`docs/adr/0002`) — without silently overreaching into guarantees the toolchain
+just "the tests passed" alone (`docs/architecture.md#decision-2-differential-equivalence-over-test-passes`) — without silently overreaching into guarantees the toolchain
 can't actually deliver for opaque ML library internals.
 
-### 3.1 — Verification tiers (new: formalizes what `docs/adr/0002` already implies but doesn't structure)
+### 3.1 — Verification tiers (new: formalizes what `docs/architecture.md#decision-2-differential-equivalence-over-test-passes` already implies but doesn't structure)
 
-`docs/adr/0002` exempts mechanical fixes (RENAME, REORDER) from the heavier differential check — a compile
+`docs/architecture.md#decision-2-differential-equivalence-over-test-passes` exempts mechanical fixes (RENAME, REORDER) from the heavier differential check — a compile
 check is sufficient for their risk profile. That exemption needs an explicit home in code, not just prose, so
 the rest of this phase has something concrete to gate on. New module: `verification/tier.py`.
 
@@ -328,7 +328,7 @@ Core function: `check_call_compatibility(old_call, new_call, signature, tier) ->
    `inspect.signature(new_call).bind(**remapped_example)` succeeds without `TypeError` for every generated
    example — proves the patch is actually callable, not just textually plausible; (b) cross-check the
    remapping itself against the `KnowledgeRecord`'s own `parameter`/`new_parameter` (or `old_param_order`/
-   `new_param_order`) fields — the record *is* the oracle here, exactly as `docs/adr/0002` specifies, to avoid
+   `new_param_order`) fields — the record *is* the oracle here, exactly as `docs/architecture.md#decision-2-differential-equivalence-over-test-passes` specifies, to avoid
    the circularity of testing a translation against itself.
 4. **`COMPILE_CHECK` tier**: `ast.parse` + `py_compile` on the patched file, already effectively proven by
    Phase 2's `ast_grep_runner.apply()`'s own round-trip; this phase adds nothing new here beyond wiring the
@@ -449,14 +449,14 @@ against a live agent session.**
 **Goal:** an agent gets blocked or corrected before it commits to broken code — and the server this runs on
 is built the way it will eventually need to scale, not retrofitted later.
 
-**Research grounding for this phase**, beyond what `docs/adr/0001` already established: MCP's 2026-07-28
+**Research grounding for this phase**, beyond what `docs/architecture.md#decision-1-single-mcp-server-with-transport-duality` already established: MCP's 2026-07-28
 specification made the core protocol stateless specifically to remove the horizontal-scaling barrier the
 prior session-based design had — under the old protocol, a request had to land on the same instance that
 handled its `initialize` call, which meant sticky sessions, shared session stores, or single-instance
 deployments were the only options. Under the stateless core, every request carries enough information to be
 handled independently, so a request can land on *any* instance behind a plain round-robin load balancer with
 no shared state at all. This is a direct, practical payoff of the architecture decision already made in
-`docs/adr/0001` — Phase 4 is where that payoff actually gets realized in code, and it's worth building the
+`docs/architecture.md#decision-1-single-mcp-server-with-transport-duality` — Phase 4 is where that payoff actually gets realized in code, and it's worth building the
 server so this property holds from the start rather than accidentally introducing in-memory state that would
 need to be ripped out later for Phase 8.
 
@@ -805,7 +805,7 @@ the code it produced; re-implemented and independently re-verified here, not tru
 Still not run against a real `llama-server` process or a real GGUF model — see the honesty note below.**
 
 **Goal:** the offline-first surface actually works, and stays inside the 6–12GB VRAM budget the whole design
-has been built around (`docs/research-foundations.md#5`, `docs/tech-stack.md`).
+has been built around (`docs/architecture.md#5-research-foundations--citations`, `docs/tech-stack.md`).
 
 - Wire `llama-server` process lifecycle management (start, health check, stop) — run as its own process over
   an OpenAI-compatible HTTP endpoint, never in-process, so the coding model's memory footprint stays isolated
@@ -814,7 +814,7 @@ has been built around (`docs/research-foundations.md#5`, `docs/tech-stack.md`).
   mechanical` were already real as of Phases 4/5; this phase adds `sync --tier semantic`, the one remaining
   `NotImplementedError` path. **Done.**
 - Implement the generator/critic double-pass for semantic-tier patches using the local model, mirroring the
-  Summary/Control/Code agent split from the LADU research (`docs/research-foundations.md`). **Done** —
+  Summary/Control/Code agent split from the LADU research (`docs/architecture.md#5-research-foundations--citations`). **Done** —
   `llm/generator.py` (the drafting half) and `verification/critic.LlamaServerCritic` (the concrete
   implementation of Phase 3's `Critic` Protocol seam, adversarial by construction — see below).
 
@@ -967,54 +967,18 @@ a real Streamable HTTP protocol-level test file (`tests/integration/test_streama
 an earlier line of work on this project but was absent from that uploaded branch, rather than let it be
 silently lost in the merge.
 
-## Phase 7 — Delivery and UI
+## Phase 7 — Delivery, Explainability, and Review Dashboard
 
-**Status: redesigned around a terminal-native interactive experience instead of a web dashboard, then
-built.** The original plan below called for a Starlette-served web dashboard for "pending Impact Map
-decisions". That's reconsidered here, not merely executed as originally written: this project's whole design
-center is a local, offline-first CLI tool (`docs/architecture.md#deployment-model`), and `rich` is already a
-dependency doing real work in `sync`'s table output — a genuinely interactive terminal experience for the one
-place this project actually needs a human in a conversational loop (first-run setup) fits that center far
-better than standing up Jinja2 templates and dashboard routes for a UI surface most users would open once.
-The web dashboard idea isn't wrong for a future shared/team deployment where a terminal isn't a shared
-resource — it's deferred, not discarded, and the routes-on-the-same-Starlette-app design in `docs/ui-design.md`
-remains the right shape for it whenever that need is real.
+**Status: complete. Both the terminal-native interactive experience (`init`, `doctor`, `explain`, `check --explain`)
+AND the Web Review Dashboard are fully implemented and verified.**
 
-**Goal:** the first-run experience is genuinely guided, not a wall of flags to look up; output elsewhere
-stays exactly as scriptable as it already was.
+- `resync init` — an interactive setup wizard (`cli/init_wizard.py`), conversational by default with `--yes` automation.
+- `resync doctor` — comprehensive diagnostic inspection across 9 subsystems with interactive repair (`doctor.py`).
+- **`resync explain <target>` & `resync check --explain`** — rich terminal cards surfacing decomposed 4-tier trust scores (`rule_match`, `test_suite`, `differential`, `citation`) and actionable remediation pathways.
+- **`resync mcp-config-auto` / `mcp-verify`** — declarative client spec registry auto-configuring 8 AI coding agent formats, with two-tier verification.
+- **The Web Review Dashboard** — fully implemented in `src/resync/server/dashboard.py` and attached to Starlette (`/dashboard`, `/api/dashboard/status`, `/api/dashboard/decisions`, `/api/dashboard/decisions/apply`). Features automated side-by-side AST unified diff previews, 4-dimensional decomposed trust scores, and live decision execution (**[⚡ Sync]**, **[🔄 Shift]**, **[📌 Pin]**, **[⏳ Exception]**) with native TOML persistence (`config/loader.py`). 15 unit tests + live REST API verification.
 
-- `resync init` — an interactive setup wizard (`cli/init_wizard.py`), the one command in this CLI designed to
-  be conversational by default. Walks through project mode, target profile, auto-apply threshold, and
-  optional pins; writes `resync.toml`; offers to seed the knowledge store with the built-in verified records
-  immediately after. A `--yes` (accept every default) and `--no-seed`/`--seed` escape hatch keeps the command
-  itself automatable for scripted setup (a devcontainer's `postCreate`, say) even though its default mode is
-  conversational. **Done** — 10 tests, all passing, driven through `CliRunner` with real simulated stdin
-  (the interactive prompts themselves are exercised, not stubbed out).
-- `check`/`sync`/`resolve`/`serve` deliberately keep zero interactive prompts — this was already true going
-  into this phase and stays a hard constraint, not something this phase's UI investment was allowed to
-  regress: a CI pipeline or another program must be able to invoke every one of them without a human at the
-  keyboard.
-- **`resync mcp-config`/`resync mcp-config-list`/`resync mcp-config custom`** (added in a later pass of this
-  phase, not part of the original scope): closes a real gap the terminal-first redesign above otherwise left
-  open — a person who just ran `resync init` still had to hand-write JSON in whatever format their coding
-  agent happens to use to actually connect it. Built as a declarative `ClientSpec` registry (8 real, verified
-  formats — see `docs/adr/0006-mcp-client-config-generation.md`), specifically because live research found
-  the client config landscape is a genuinely fast-moving target (real, currently-open client bugs; a
-  client's config path found to be unsettled across its own product surfaces) that a registry can be patched
-  against far faster than code branches could. Wired into `init`'s next-steps panel. **Done** — 37 unit tests
-  + 11 CLI integration tests, all real file I/O through the real CLI entrypoint.
-- PR comment template carrying the decomposed trust score, and GitHub App/PR delivery scaffolding: **not
-  built this phase** — both need a real git remote and an authenticated GitHub client that don't exist in
-  this development environment, the same honest scope boundary `resync sync`'s own docstring already draws
-  around PR creation (Phase 6). Worth building once there's a real repo/CI context to build and verify it
-  against, not simulated here.
-- The web dashboard itself: **deferred**, per the redesign note above — not attempted this phase.
-
-**Depends on:** Phase 3 (trust scores to display). **Exit criteria (revised to match the redesign)**: a new
-user can go from a fresh checkout to a working `resync.toml` and a seeded knowledge store through `resync
-init` alone, with no other command's `--help` output required first. **Met** — confirmed by the interactive
-`CliRunner` walkthrough tests, including the non-default-answers path (not just the all-defaults happy path)
-and the overwrite-protection path for a repo that already has a `resync.toml`.
+**Depends on:** Phase 3 (trust scores to display) & Phase 4 (Starlette app). **Exit criteria**: a new user can initialize, diagnose, review, and execute decisions seamlessly via either terminal or web dashboard. **Met.**
 
 ## Phase 8 — Scaling
 
@@ -1051,7 +1015,7 @@ architecture bolted on afterward.
 - Add a caching layer for the real-time gate's registry/advisory lookups — explicitly flagged as an open
   question in `docs/PRD.md` (cache duration vs. package-yank invalidation speed), to be resolved with real
   data from Phase 4's traffic, not decided in the abstract here.
-- Load-test the real-time gate against the stated latency budget (`docs/testing-strategy.md`: p95 < 200ms)
+- Load-test the real-time gate against the stated latency budget (`docs/architecture.md#7-testing-strategy--quality-pyramid`: p95 < 200ms)
   under realistic concurrent load — the first time this NFR is actually measured rather than stated as a
   target.
 - Confirm the knowledge store (LanceDB + Kùzu) can be shared safely across concurrently-running server
@@ -1067,7 +1031,7 @@ no behavior difference from the single-instance case; the latency budget is meas
 
 ## Phase 9 — Release
 
-Fully detailed in `docs/release-plan.md` — versioning (SemVer, `v0.1.0`), PyPI Trusted Publishing (OIDC, no
+Fully detailed in `docs/architecture.md#8-release--publishing-strategy` — versioning (SemVer, `v0.1.0`), PyPI Trusted Publishing (OIDC, no
 stored token, confirmed as current practice), the pre-release checklist (including running Resync's own
 supply-chain provenance gate against its own dependencies), and the launch checklist. Listed here as a formal
 phase, not just a separate document, so the full lifecycle from foundation to shipped product reads as one
@@ -1078,10 +1042,9 @@ already-warm local setup.
 
 ## What stays out of this plan on purpose
 
-TypeScript and Rust adapters, the Impact Map's live decision logic (as opposed to its UI shell), the public
-breaking-change manifest standard, and DepMigrationBench are all designed in detail elsewhere
-(`docs/multi-language-adapters.md`, `docs/architecture.md#the-impact-map`, `docs/architecture.md#roadmap`) but
-are explicitly not phases in this plan. Adding them before Phases 0–9 are solid would repeat the exact scope
-mistake flagged repeatedly during this project's design — see the "Any other upgrades" pattern in the design
-history. Testing is a cross-cutting practice applied throughout every phase above, detailed once in
-`docs/testing-strategy.md` rather than repeated per phase.
+The public breaking-change manifest standard and DepMigrationBench are designed in detail elsewhere
+(`docs/architecture.md#roadmap`) and are explicitly future work. Note that multi-language support (originally
+scoped out of this plan) was pulled forward and fully completed across 7 languages (Python, Rust, TypeScript,
+Kotlin, Java, Go, C/C++) with dynamic entry-point discovery and manifest scanners in `src/resync/adapters/`,
+empirically verified against real codebases (`goprivate` and `HacktT`). Testing is a cross-cutting practice
+applied throughout every phase above, detailed once in `docs/architecture.md#7-testing-strategy--quality-pyramid` rather than repeated per phase.
