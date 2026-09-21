@@ -88,6 +88,7 @@ body {
 .section {
   padding: 100px 0;
   position: relative;
+  scroll-margin-top: 85px;
 }
 
 .text-center { text-align: center; }
@@ -175,6 +176,24 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+@media (max-width: 860px) {
+  .nav-links {
+    display: none;
+  }
+}
+
+@media (max-width: 500px) {
+  .nav-cta .btn-secondary {
+    display: none;
+  }
+  .navbar-inner {
+    height: 62px;
+  }
+  .brand-logo {
+    font-size: 1.25rem;
+  }
 }
 
 /* Button Component */
@@ -338,6 +357,12 @@ body {
   color: var(--accent-cyan);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   max-width: 100%;
+}
+
+.copy-box code {
+  overflow-x: auto;
+  white-space: nowrap;
+  max-width: calc(100vw - 110px);
 }
 
 .copy-btn {

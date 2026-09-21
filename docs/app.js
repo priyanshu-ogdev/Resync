@@ -13,6 +13,34 @@ document.addEventListener('DOMContentLoaded', () => {
 /* --------------------------------------------------------------------------
    1. Copy-to-Clipboard Functionality
    -------------------------------------------------------------------------- */
+async function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      // Fallback below
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  let successful = false;
+  try {
+    successful = document.execCommand('copy');
+  } catch (err) {
+    successful = false;
+  }
+  document.body.removeChild(textarea);
+  return successful;
+}
+
 function initCopyButtons() {
   const copyButtons = document.querySelectorAll('.copy-btn');
 
@@ -23,25 +51,22 @@ function initCopyButtons() {
 
       if (!targetText) return;
 
-      try {
-        await navigator.clipboard.writeText(targetText.trim());
-        const originalHtml = btn.innerHTML;
+      const success = await copyToClipboard(targetText.trim());
+      if (!success) return;
 
-        btn.classList.add('copied');
-        btn.innerHTML = `
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-          Copied!
-        `;
+      const originalHtml = btn.innerHTML;
+      btn.classList.add('copied');
+      btn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Copied!
+      `;
 
-        setTimeout(() => {
-          btn.classList.remove('copied');
-          btn.innerHTML = originalHtml;
-        }, 2200);
-      } catch (err) {
-        console.error('Failed to copy to clipboard', err);
-      }
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.innerHTML = originalHtml;
+      }, 2200);
     });
   });
 }
