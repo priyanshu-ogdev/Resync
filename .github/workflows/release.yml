@@ -35,7 +35,7 @@ jobs:
     permissions:
       id-token: write  # required for PyPI Trusted Publishing (OIDC) — no stored token, see docs/architecture.md#8-release--publishing-strategy
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
