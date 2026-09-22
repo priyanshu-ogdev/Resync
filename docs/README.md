@@ -42,6 +42,6 @@ For a high-level introduction and quick start, see the root [`README.md`](../REA
 ## Operational References
 
 - **[`../AGENTS.md`](../AGENTS.md)** — Cross-tool instructions for AI coding agents working in this repository.
-- **[`../installer/`](../installer/)** — Standalone single-launch installers (`install.exe`, `install.sh`).
+- **[`../installer/`](../installer/)** — Standalone single-launch installers (`resync.exe`, `resync.sh`).
 - **[`../tools/`](../tools/)** — Internal developer utilities, diagnostics (`verify_install.py`), and cache cleaner (`clean.py`).
 - **[`../examples/`](../examples/)** — Ready-to-use agent MCP configurations (`examples/mcp-configs/`) and GitHub Actions workflows (`examples/github-actions/`).

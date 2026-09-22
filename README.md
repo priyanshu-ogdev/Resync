@@ -114,19 +114,19 @@ sequenceDiagram
 Resync provides standalone native installers that provision Astral `uv`, standalone Python 3.12 (if needed), the native `ast-grep` binary, pre-warms quantized ONNX embeddings, seeds the knowledge store, and links your active AI editors:
 
 #### Windows (Native C Executable)
-Run from PowerShell or Command Prompt (or double-click [`installer/install.exe`](installer/install.exe)):
+Run from PowerShell or Command Prompt (or double-click [`installer/resync.exe`](installer/resync.exe)):
 ```cmd
-.\installer\install.exe
+.\installer\resync.exe
 ```
 *(Runs with zero execution-policy friction; automatically scaffolds `.agents/`, `.cursor/`, `.vscode/`, `.zed/`, and `.mcp.json`).*
 
 #### Linux & macOS (POSIX Shell)
 ```bash
 # One-liner:
-curl -fsSL https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/resync.sh | bash
 
 # Or from cloned repository:
-./installer/install.sh
+./installer/resync.sh
 ```
 
 #### Manual Developer Setup

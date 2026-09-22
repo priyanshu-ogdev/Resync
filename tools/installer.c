@@ -10,7 +10,7 @@
  * 6. System health check and diagnostics verification (resync doctor)
  *
  * Build:
- *   gcc -O2 -static -Wall tools/installer.c -o installer/install.exe
+ *   gcc -O2 -static -Wall tools/installer.c -o installer/resync.exe
  */
 
 #include <stdio.h>
@@ -388,7 +388,7 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-Help") == 0 || strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "/?") == 0) {
             print_header();
-            printf("Usage: install.exe [OPTIONS]\n\n");
+            printf("Usage: resync.exe [OPTIONS]\n\n");
             printf("Options:\n");
             printf("  --local, -l        Install into local repository virtual environment (.venv)\n");
             printf("  --global, -g       Install as a global user CLI tool\n");
@@ -398,10 +398,10 @@ int main(int argc, char *argv[]) {
             printf("  --skip-mcp         Skip MCP client configuration\n");
             printf("  --help, -h         Show this help message\n\n");
             printf("Examples:\n");
-            printf("  install.exe                     # Interactive single-click install & full MCP setup\n");
-            printf("  install.exe -y                  # Unattended setup (CI / automated)\n");
-            printf("  install.exe --local --dev       # Local dev setup with test suites\n");
-            printf("  install.exe --client cursor     # Install and configure for Cursor\n\n");
+            printf("  resync.exe                     # Interactive single-click install & full MCP setup\n");
+            printf("  resync.exe -y                  # Unattended setup (CI / automated)\n");
+            printf("  resync.exe --local --dev       # Local dev setup with test suites\n");
+            printf("  resync.exe --client cursor     # Install and configure for Cursor\n\n");
             return 0;
         }
     }
@@ -522,8 +522,8 @@ int main(int argc, char *argv[]) {
             run_command_animated("uv tool install --editable . --extra server --extra cli --with ast-grep-cli --force",
                                  "Installing Resync CLI globally in editable mode");
         } else {
-            run_command_animated("uv tool install \"resync-mcp[server,cli]\" --with ast-grep-cli --force",
-                                 "Installing Resync CLI globally from package index");
+            run_command_animated("uv tool install \"resync-mcp[server,cli] @ git+https://github.com/priyanshu-ogdev/Resync.git\" --with ast-grep-cli --force",
+                                 "Installing Resync CLI globally from repository");
         }
         snprintf(resync_cmd, sizeof(resync_cmd), "resync");
     }

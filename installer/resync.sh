@@ -3,9 +3,9 @@
 # Automates background provisioning of uv, Python 3.12, ast-grep, embedding models, and Resync MCP server.
 #
 # Usage:
-#   ./installer/install.sh [--local] [--dev] [--client <name>] [--yes]
+#   ./installer/resync.sh [--local] [--dev] [--client <name>] [--yes]
 #   Remote one-liner:
-#   curl -fsSL https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/resync.sh | bash
 
 set -euo pipefail
 
@@ -66,7 +66,7 @@ print_completion_card() {
 show_help() {
     print_header
     cat <<EOF
-Usage: ./installer/install.sh [OPTIONS]
+Usage: ./installer/resync.sh [OPTIONS]
 
 Options:
   --local, -l        Install into local repository virtual environment (.venv)
@@ -78,10 +78,10 @@ Options:
   -h, --help         Show this help message
 
 Examples:
-  ./installer/install.sh                     # Interactive single-launch install & full MCP setup
-  ./installer/install.sh -y                  # Unattended setup (CI / automated)
-  ./installer/install.sh --local --dev       # Local dev setup with test suites
-  ./installer/install.sh --client cursor     # Install and configure for Cursor
+  ./installer/resync.sh                     # Interactive single-launch install & full MCP setup
+  ./installer/resync.sh -y                  # Unattended setup (CI / automated)
+  ./installer/resync.sh --local --dev       # Local dev setup with test suites
+  ./installer/resync.sh --client cursor     # Install and configure for Cursor
 
 EOF
     exit 0
@@ -241,9 +241,9 @@ fi
 
 if [ -z "$UV_BIN" ]; then
     if command -v curl >/dev/null 2>&1; then
-        run_with_spinner "Downloading Astral uv via curl" sh -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
+        run_with_spinner "Downloading Astral uv via curl" sh -c "curl -LsSf https://astral.sh/uv/resync.sh | sh"
     elif command -v wget >/dev/null 2>&1; then
-        run_with_spinner "Downloading Astral uv via wget" sh -c "wget -qO- https://astral.sh/uv/install.sh | sh"
+        run_with_spinner "Downloading Astral uv via wget" sh -c "wget -qO- https://astral.sh/uv/resync.sh | sh"
     else
         err "Neither curl nor wget found. Please install curl or wget first."
         exit 1
@@ -325,8 +325,8 @@ else
         run_with_spinner "Installing Resync globally in editable mode" \
             "$UV_BIN" tool install --editable "$REPO_ROOT" --extra server --extra cli --with ast-grep-cli --force
     else
-        run_with_spinner "Installing Resync globally from package index" \
-            "$UV_BIN" tool install "resync-mcp[server,cli]" --with ast-grep-cli --force
+        run_with_spinner "Installing Resync globally from repository" \
+            "$UV_BIN" tool install "resync-mcp[server,cli] @ git+https://github.com/priyanshu-ogdev/Resync.git" --with ast-grep-cli --force
     fi
     RESYNC_CMD="resync"
 fi

@@ -7,11 +7,11 @@ Internal developer utilities, diagnostics, and build sources for Resync.
 ## Utilities
 
 ### 1. `installer.c` — Source for Native Windows Installer
-C source code for [`installer/install.exe`](../installer/install.exe).
+C source code for [`installer/resync.exe`](../installer/resync.exe).
 - Zero external runtime dependencies; links statically against MSVCRT and Windows system libraries.
 - Compiles with MinGW GCC:
   ```cmd
-  gcc -O2 -static -Wall tools/installer.c -o installer/install.exe
+  gcc -O2 -static -Wall tools/installer.c -o installer/resync.exe
   ```
   Or using `make`:
   ```bash

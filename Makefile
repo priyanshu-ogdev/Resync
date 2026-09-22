@@ -30,7 +30,7 @@ run-server-http:
 	uv run resync serve --transport http --port 8787
 
 installer:
-	gcc -O2 -static -Wall tools/installer.c -o installer/install.exe
+	gcc -O2 -static -Wall tools/installer.c -o installer/resync.exe
 
 clean:
 	uv run python tools/clean.py
