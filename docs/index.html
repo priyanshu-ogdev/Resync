@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Resync | AI-Native Dependency & API Compatibility Engine</title>
   <meta name="description" content="Sub-200ms real-time MCP prevention against AI package hallucination, slopsquatting, and silent API drift for modern codebases.">
   <meta property="og:title" content="Resync | AI-Native Dependency & API Compatibility Engine">
@@ -59,13 +59,44 @@
         <a href="#download-center" class="btn btn-primary" style="padding: 8px 18px;">
           Get Resync
         </a>
+        <button class="mobile-toggle-btn" id="mobile-toggle-btn" aria-label="Toggle navigation menu" aria-expanded="false">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
       </div>
     </div>
   </header>
 
+  <!-- Mobile Navigation Drawer -->
+  <div class="mobile-nav-drawer" id="mobile-nav-drawer">
+    <ul class="mobile-nav-links">
+      <li><a href="#features" class="mobile-nav-link"><span>Capabilities</span> <span class="badge-icon blue"><svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></span></a></li>
+      <li><a href="#architecture" class="mobile-nav-link"><span>4-Stage Architecture</span> <span class="badge-icon blue"><svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></span></a></li>
+      <li><a href="#benchmarks" class="mobile-nav-link"><span>Benchmarks & Trust</span> <span class="badge-icon green"><svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></span></a></li>
+      <li><a href="#mcp-tools" class="mobile-nav-link"><span>MCP Gate (5 Tools)</span> <span class="badge-icon blue"><svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></span></a></li>
+      <li><a href="#dashboard" class="mobile-nav-link"><span>Review Dashboard</span> <span class="badge-icon blue"><svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></span></a></li>
+      <li><a href="#polyglot" class="mobile-nav-link"><span>7 Language Adapters</span> <span class="badge-icon blue"><svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></span></a></li>
+      <li><a href="#download-center" class="mobile-nav-link"><span>Download Center</span> <span class="badge-icon green"><svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></span></a></li>
+    </ul>
+    <div class="mobile-drawer-cta">
+      <a href="https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/resync.exe" download="resync.exe" class="btn btn-glow-aurora">
+        Download for Windows (resync.exe)
+      </a>
+      <a href="https://github.com/priyanshu-ogdev/Resync" target="_blank" rel="noopener" class="btn btn-secondary">
+        GitHub Repository
+      </a>
+    </div>
+  </div>
+
   <!-- Hero Section -->
   <section class="hero-section text-center">
-    <div class="container">
+    <div class="ambient-aurora-wrap">
+      <div class="aurora-orb blue"></div>
+      <div class="aurora-orb rose"></div>
+    </div>
+
+    <div class="container" style="position: relative; z-index: 2;">
       <div class="hero-pill">
         <span class="hero-pill-pulse"></span>
         <span>Real-Time MCP Prevention & AST Modernization Engine</span>
@@ -81,7 +112,7 @@
       </p>
 
       <div class="hero-actions">
-        <a href="https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/resync.exe" download="resync.exe" class="btn btn-glow">
+        <a href="https://raw.githubusercontent.com/priyanshu-ogdev/Resync/main/installer/resync.exe" download="resync.exe" class="btn btn-glow-aurora">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4h-13.05M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.05-1.801"/>
           </svg>
@@ -130,6 +161,59 @@
           <span>&lt; 200ms Latency Budget</span>
         </div>
       </div>
+
+      <!-- Interactive Hero Terminal Simulator -->
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <div class="terminal-header-left">
+            <div class="terminal-dots">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+            </div>
+            <div class="terminal-tabs">
+              <button class="terminal-tab-btn active" data-tab="check">resync check</button>
+              <button class="terminal-tab-btn" data-tab="mcp">resync mcp-verify</button>
+              <button class="terminal-tab-btn" data-tab="doctor">resync doctor</button>
+            </div>
+          </div>
+          <span class="terminal-title">Live Terminal Simulator</span>
+        </div>
+
+        <div class="terminal-body">
+          <!-- Panel 1: resync check -->
+          <div class="terminal-panel active" id="terminal-panel-check">
+            <div><span class="t-cyan">$</span> resync check --repo . --strict</div>
+            <div class="t-muted">Scanning AST call sites across 56 files against knowledge store...</div>
+            <div style="margin-top: 6px;"><span class="t-yellow">[INTERCEPTED]</span> <strong style="color: #fff;">src/models/encoder.py:41</strong></div>
+            <div style="color: #fda4af;">- AutoModel.from_pretrained("bert-base", use_auth_token=api_key)</div>
+            <div style="color: #6ee7b7;">+ AutoModel.from_pretrained("bert-base", token=api_key)</div>
+            <div class="t-purple">→ Deprecated parameter: use_auth_token (removed in v5.0.0). Deterministic AST match score: 1.00</div>
+            <div style="margin-top: 6px;"><span class="t-green">✔ 0 package hallucinations</span> • <span class="t-yellow">1 signature modernizeable</span> • <span class="t-cyan">Latency: 18.2ms</span></div>
+          </div>
+
+          <!-- Panel 2: resync mcp-verify -->
+          <div class="terminal-panel" id="terminal-panel-mcp">
+            <div><span class="t-cyan">$</span> resync mcp-verify --stdio</div>
+            <div class="t-muted">Testing MCP 2.0+ Stateless protocol handshake...</div>
+            <div class="t-green">✔ Stdio transport initialized (PID 9412)</div>
+            <div class="t-cyan">✔ 5 tools verified: [verify_package, check_symbol_exists, verify_patch_equivalence, explain_change, get_compatibility_report]</div>
+            <div class="t-green">✔ FastEmbed ONNX runtime verified (zero-torch active)</div>
+            <div class="t-green">✔ Active editors auto-configured: Antigravity, Claude Code, Cursor, Zed, VS Code</div>
+          </div>
+
+          <!-- Panel 3: resync doctor -->
+          <div class="terminal-panel" id="terminal-panel-doctor">
+            <div><span class="t-cyan">$</span> resync doctor</div>
+            <div class="t-muted">Verifying system prerequisites and polyglot adapters...</div>
+            <div class="t-green">✔ Python: 3.13.9 | uv: 0.12.17 | ast-grep: 0.45.3 native binary</div>
+            <div class="t-green">✔ Adapters detected: Python (pypi), Rust (crates.io), TypeScript (npm), Go (go), Kotlin (maven), Java (maven), C/C++ (conan)</div>
+            <div class="t-cyan">✔ Cryptographic provenance: Sigstore PEP 740 & SLSA attestations active</div>
+            <div class="t-green">✔ Health Status: ALL SYSTEMS OPERATIONAL (100%)</div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </section>
 
@@ -145,7 +229,7 @@
       </div>
 
       <div class="problem-grid">
-        <div class="glass-card problem-card glow-cyan">
+        <div class="holo-card problem-card glow-cyan">
           <div class="problem-icon rose">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
@@ -163,7 +247,7 @@
           </div>
         </div>
 
-        <div class="glass-card problem-card glow-purple">
+        <div class="holo-card problem-card glow-crimson">
           <div class="problem-icon amber">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
@@ -197,7 +281,7 @@
 
       <div class="arch-container">
         <!-- Stage 1: Ingress Layer -->
-        <div class="arch-stage-card">
+        <div class="holo-card arch-stage-card">
           <div class="arch-stage-header">
             <div class="arch-stage-title-wrap">
               <span class="arch-stage-num">1</span>
@@ -243,7 +327,7 @@
         </div>
 
         <!-- Stage 2: Dual-Speed Engine Core -->
-        <div class="arch-stage-card">
+        <div class="holo-card arch-stage-card">
           <div class="arch-stage-header">
             <div class="arch-stage-title-wrap">
               <span class="arch-stage-num">2</span>
@@ -313,7 +397,7 @@
         </div>
 
         <!-- Stage 3: 4-Tier Verification Shield -->
-        <div class="arch-stage-card">
+        <div class="holo-card arch-stage-card">
           <div class="arch-stage-header">
             <div class="arch-stage-title-wrap">
               <span class="arch-stage-num">3</span>
@@ -375,7 +459,7 @@
         </div>
 
         <!-- Stage 4: Control Surfaces -->
-        <div class="arch-stage-card">
+        <div class="holo-card arch-stage-card">
           <div class="arch-stage-header">
             <div class="arch-stage-title-wrap">
               <span class="arch-stage-num">4</span>
@@ -422,7 +506,7 @@
 
       <div class="graph-grid">
         <!-- Benchmark 1: Latency Comparison -->
-        <div class="benchmark-card">
+        <div class="holo-card benchmark-card">
           <div class="benchmark-header">
             <div>
               <h3 class="benchmark-title">Interception Latency</h3>
@@ -487,7 +571,7 @@
         </div>
 
         <!-- Benchmark 2: Decomposed Trust Metrics -->
-        <div class="benchmark-card">
+        <div class="holo-card benchmark-card">
           <div class="benchmark-header">
             <div>
               <h3 class="benchmark-title">Decomposed Trust Confidence</h3>

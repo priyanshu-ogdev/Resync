@@ -4,12 +4,120 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  initMobileNav();
+  initHoloSpotlight();
+  initTerminalTabs();
   initCopyButtons();
   initPlatformTabs();
   initMcpPlayground();
   initDashboardActions();
   initBenchmarkAnimations();
 });
+
+/* --------------------------------------------------------------------------
+   0. Mobile Navigation Drawer & Hamburger Toggle
+   -------------------------------------------------------------------------- */
+function initMobileNav() {
+  const toggleBtn = document.getElementById('mobile-toggle-btn');
+  const drawer = document.getElementById('mobile-nav-drawer');
+  if (!toggleBtn || !drawer) return;
+
+  const toggle = (force) => {
+    const shouldOpen = typeof force === 'boolean' ? force : !drawer.classList.contains('open');
+    if (shouldOpen) {
+      toggleBtn.classList.add('active');
+      drawer.classList.add('open');
+      toggleBtn.setAttribute('aria-expanded', 'true');
+    } else {
+      toggleBtn.classList.remove('active');
+      drawer.classList.remove('open');
+      toggleBtn.setAttribute('aria-expanded', 'false');
+    }
+  };
+
+  toggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggle();
+  });
+
+  const links = drawer.querySelectorAll('.mobile-nav-link, .mobile-drawer-cta a');
+  links.forEach((link) => {
+    link.addEventListener('click', () => {
+      toggle(false);
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (drawer.classList.contains('open') && !drawer.contains(e.target) && !toggleBtn.contains(e.target)) {
+      toggle(false);
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && drawer.classList.contains('open')) {
+      toggle(false);
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 860 && drawer.classList.contains('open')) {
+      toggle(false);
+    }
+  });
+}
+
+/* --------------------------------------------------------------------------
+   0.1 Holographic Spotlight Interactive Tracking
+   -------------------------------------------------------------------------- */
+function initHoloSpotlight() {
+  const holoCards = document.querySelectorAll('.holo-card');
+  if (!holoCards.length) return;
+
+  holoCards.forEach((card) => {
+    const handleMove = (e) => {
+      const rect = card.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const x = ((clientX - rect.left) / rect.width) * 100;
+      const y = ((clientY - rect.top) / rect.height) * 100;
+      card.style.setProperty('--spotlight-x', `${x.toFixed(2)}%`);
+      card.style.setProperty('--spotlight-y', `${y.toFixed(2)}%`);
+    };
+
+    card.addEventListener('mousemove', handleMove, { passive: true });
+    card.addEventListener('touchmove', handleMove, { passive: true });
+
+    card.addEventListener('mouseleave', () => {
+      card.style.setProperty('--spotlight-x', '50%');
+      card.style.setProperty('--spotlight-y', '50%');
+    });
+  });
+}
+
+/* --------------------------------------------------------------------------
+   0.2 Interactive Hero Terminal Simulator Tabs
+   -------------------------------------------------------------------------- */
+function initTerminalTabs() {
+  const tabBtns = document.querySelectorAll('.terminal-tab-btn');
+  const panels = document.querySelectorAll('.terminal-panel');
+  if (!tabBtns.length) return;
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tabId = btn.getAttribute('data-tab');
+      if (!tabId) return;
+
+      tabBtns.forEach((b) => b.classList.remove('active'));
+      panels.forEach((p) => p.classList.remove('active'));
+
+      btn.classList.add('active');
+      const targetPanel = document.getElementById(`terminal-panel-${tabId}`);
+      if (targetPanel) {
+        targetPanel.classList.add('active');
+      }
+    });
+  });
+}
 
 /* --------------------------------------------------------------------------
    1. Copy-to-Clipboard Functionality
