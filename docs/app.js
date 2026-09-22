@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initPlatformTabs();
   initMcpPlayground();
   initDashboardActions();
+  initBenchmarkAnimations();
 });
 
 /* --------------------------------------------------------------------------
@@ -199,4 +200,40 @@ function initDashboardActions() {
       }
     });
   });
+}
+
+/* --------------------------------------------------------------------------
+   5. Benchmark Bar Animations on Scroll
+   -------------------------------------------------------------------------- */
+function initBenchmarkAnimations() {
+  const bars = document.querySelectorAll('.bar-fill');
+  if (!bars.length) return;
+
+  const originalWidths = [];
+  bars.forEach((bar, idx) => {
+    originalWidths[idx] = bar.style.width || '100%';
+    bar.style.width = '0%';
+    bar.style.transition = 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1)';
+  });
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          bars.forEach((bar, idx) => {
+            setTimeout(() => {
+              bar.style.width = originalWidths[idx];
+            }, idx * 120);
+          });
+          observer.disconnect();
+        }
+      });
+    },
+    { threshold: 0.2 }
+  );
+
+  const benchmarkCard = document.querySelector('.benchmark-card');
+  if (benchmarkCard) {
+    observer.observe(benchmarkCard);
+  }
 }
